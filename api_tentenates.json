@@ -1,0 +1,8 @@
+{
+    "tenantId": "cliente_ideallys_01",
+    "config_ai": "voce e uma ia especializada em atendimento",
+    "evolutionApiKey": "2F5B8CE9BD8C-4408-A63D-1C247F64CC17",
+    "isActive": true,
+    "salvarBancoDeDados": "https://823a3852-c34d-4182-ac62-5ada34ba7387.mock.pstmn.io//api/interactions",
+    "ID_pronpt": "idealys"
+}

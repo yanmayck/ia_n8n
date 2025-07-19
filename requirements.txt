@@ -1,0 +1,14 @@
+
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-dotenv
+google-generativeai
+langchain
+langchain-google-genai
+agno
+crewai
+
+# Descomente a linha abaixo se você for usar o Supabase (PostgreSQL)
+# psycopg2-binary

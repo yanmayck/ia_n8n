@@ -1,0 +1,27 @@
+[
+    {
+        "part_id": 1,
+        "type": "intro",
+        "text_content": "Olá! Sou seu assistente virtual e estou aqui para te ajudar."
+    },
+    {
+        "part_id": 2,
+        "type": "information",
+        "text_content": "Detectei que sua solicitação de suporte é sobre um problema de conectividade com a internet."
+    },
+    {
+        "part_id": 3,
+        "type": "instruction",
+        "text_content": "Para começar, por favor, reinicie seu roteador e seu modem."
+    },
+    {
+        "part_id": 4,
+        "type": "instruction",
+        "text_content": "Após a reinicialização, aguarde 2 minutos e verifique se o problema foi resolvido."
+    },
+    {
+        "part_id": 5,
+        "type": "outro",
+        "text_content": "Se o problema persistir, por favor, me avise para que possamos investigar mais a fundo. Obrigado!"
+    }
+]
