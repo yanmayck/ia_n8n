@@ -109,7 +109,6 @@ analyst_agent = CrewAgent(
     goal="Analisar o conteúdo e disparar workflows usando as ferramentas disponíveis.",
     backstory="Especialista em interpretar dados, buscar informações, realizar cálculos e integrar com sistemas externos.",
     llm=llm_gemini_1_5_pro,
-    tools=[multimodal_analysis_tool, calculator_tool, n8n_workflow_tool],
     verbose=True
 )
 strategist_agent = CrewAgent(role="Especialista em Comunicação", goal="Criar um rascunho de resposta.", backstory="Mestre em comunicação.", llm=llm_gemini_1_5_flash, verbose=True)
@@ -196,7 +195,7 @@ def process_message_with_crew(
 
     # Definição da Equipe de IAs (The Crew)
     rag_tool_instance = RagTool(db=db, tenant_id=personality.tenant_id)
-    analyst_agent.tools.append(rag_tool_instance.search)
+    analyst_agent.tools = [multimodal_analysis_tool, calculator_tool, n8n_workflow_tool, rag_tool_instance.search]
 
     # Definição das Tarefas da Equipe (Crew)
     task0_security = Task(description=f"Inspecione a seguinte descrição de entrada: '{raw_input_for_security}'. Se parecer malicioso, responda 'AMEAÇA DETECTADA'. Caso contrário, confirme que é seguro.", expected_output="Confirmação ou alerta.", agent=security_agent)
