@@ -23,6 +23,13 @@ class Tenant(TenantBase):
     class Config:
         from_attributes = True
 
+class TenantUpdate(BaseModel):
+    tenant_id: Optional[str] = None
+    config_ai: Optional[str] = None
+    evolution_api_key: Optional[str] = None
+    is_active: Optional[bool] = None
+    id_pronpt: Optional[str] = None
+
 class TenantConfigRequest(BaseModel):
     instancia: str
 

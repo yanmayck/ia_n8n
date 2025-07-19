@@ -17,6 +17,19 @@ def create_tenant(db: Session, tenant: schemas.TenantCreate):
     db.refresh(db_tenant)
     return db_tenant
 
+def get_all_tenants(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Tenant).offset(skip).limit(limit).all()
+
+def update_tenant(db: Session, tenant_id: str, tenant: schemas.TenantUpdate):
+    db_tenant = db.query(models.Tenant).filter(models.Tenant.tenant_id == tenant_id).first()
+    if db_tenant:
+        for key, value in tenant.dict(exclude_unset=True).items():
+            setattr(db_tenant, key, value)
+        db.add(db_tenant)
+        db.commit()
+        db.refresh(db_tenant)
+    return db_tenant
+
 # =======================================================================
 # Funções CRUD para Personalities (IA)
 # =======================================================================

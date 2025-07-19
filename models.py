@@ -14,7 +14,7 @@ class Tenant(Base):
     is_active = Column(Boolean, default=True)
     id_pronpt = Column(String, ForeignKey("personalities.name"))
 
-    personality = relationship("Personality")
+    personality = relationship("Personality", foreign_keys=[id_pronpt])
 
 class Personality(Base):
     __tablename__ = "personalities"
@@ -25,7 +25,7 @@ class Personality(Base):
     tenant_id = Column(String, ForeignKey("tenants.tenant_id"))
 
     interactions = relationship("Interaction", back_populates="personality")
-    tenant = relationship("Tenant")
+    tenant = relationship("Tenant", foreign_keys=[tenant_id])
 
 class Interaction(Base):
     __tablename__ = "interactions"

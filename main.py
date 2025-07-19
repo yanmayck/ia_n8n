@@ -92,6 +92,18 @@ def create_tenant(tenant: schemas.TenantCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cliente com este ID já existe.")
     return crud.create_tenant(db=db, tenant=tenant)
 
+@app.get("/tenants/", response_model=List[schemas.Tenant], tags=["Tenants"])
+def get_all_tenants(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    tenants = crud.get_all_tenants(db, skip=skip, limit=limit)
+    return tenants
+
+@app.put("/tenants/{tenant_id}", response_model=schemas.Tenant, tags=["Tenants"])
+def update_tenant(tenant_id: str, tenant: schemas.TenantUpdate, db: Session = Depends(get_db)):
+    db_tenant = crud.update_tenant(db, tenant_id=tenant_id, tenant=tenant)
+    if not db_tenant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente não encontrado.")
+    return db_tenant
+
 # =======================================================================
 # Endpoint Principal da IA com CrewAI
 # =======================================================================

@@ -5,91 +5,349 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Customer Service Assistant - Configuration</title>
     <style>
+        /* General Body and Typography */
         body {
-            font-family: sans-serif;
-            margin: 2em;
-        }
-        h1, h2 {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #f0f2f5; /* Light gray background */
             color: #333;
+            line-height: 1.6;
         }
+
+        h1 {
+            color: #2c3e50; /* Darker blue-gray for main heading */
+            text-align: center;
+            padding: 20px 0;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            color: #34495e; /* Slightly lighter blue-gray for subheadings */
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 5px;
+        }
+
+        /* Container and Layout */
         .container {
-            max-width: 800px;
-            margin: 0 auto;
+            padding: 20px;
         }
+
+        .main-container {
+            display: flex;
+            gap: 25px; /* Increased gap */
+            max-width: 1300px; /* Slightly wider max-width */
+            margin: 20px auto;
+            align-items: flex-start; /* Align items to the top */
+        }
+
+        .left-column {
+            flex: 0 0 300px; /* Fixed width for left column */
+            min-width: 250px;
+        }
+
+        .right-column {
+            flex: 1; /* Right column takes remaining space */
+        }
+
+        /* Form Sections */
         .form-section {
-            background: #f4f4f4;
-            padding: 1em;
-            border-radius: 5px;
-            margin-bottom: 1em;
+            background: #ffffff; /* White background for sections */
+            padding: 25px; /* More padding */
+            border-radius: 8px; /* Softer corners */
+            margin-bottom: 25px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08); /* More prominent shadow */
+            transition: transform 0.2s ease-in-out;
         }
+
+        .form-section:hover {
+            transform: translateY(-3px); /* Subtle lift effect on hover */
+        }
+
         label {
             display: block;
-            margin-bottom: 0.5em;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
         }
-        input, textarea {
-            width: 100%;
-            padding: 0.5em;
-            margin-bottom: 1em;
+
+        input[type="text"], 
+        input[type="email"],
+        input[type="password"],
+        textarea {
+            width: calc(100% - 20px); /* Account for padding */
+            padding: 10px;
+            margin-bottom: 15px;
             border: 1px solid #ccc;
-            border-radius: 3px;
+            border-radius: 5px;
+            box-sizing: border-box; /* Include padding in width */
+            font-size: 1rem;
+            transition: border-color 0.2s ease-in-out;
         }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            border-color: #3498db; /* Highlight border on focus */
+            outline: none;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+
         button {
-            background: #333;
+            background: #3498db; /* Blue button */
             color: #fff;
-            padding: 0.5em 1em;
+            padding: 10px 20px;
             border: none;
-            border-radius: 3px;
+            border-radius: 5px;
             cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.2s ease-in-out;
+        }
+
+        button:hover {
+            background: #2980b9; /* Darker blue on hover */
+        }
+
+        /* Client List Specifics */
+        #client-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .client-item {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            margin-bottom: 8px;
+            padding: 12px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+
+        .client-item:hover {
+            background-color: #eef;
+            transform: translateX(5px);
+        }
+
+        .client-item.selected {
+            background-color: #dbe9f5; /* Highlight selected client */
+            border-color: #3498db;
+        }
+
+        /* Table Styling (for Product List) */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden; /* Ensures rounded corners apply to table */
+        }
+
+        th,
+        td {
+            border: 1px solid #e0e0e0;
+            padding: 12px 15px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f0f2f5;
+            color: #555;
+            font-weight: bold;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f8f8f8;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* Responsive adjustments (optional, but good practice) */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .left-column {
+                flex: none; /* Remove fixed width on small screens */
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>AI Customer Service Assistant - Configuration</h1>
+        <div class="main-container">
+            <div class="left-column">
+                <div class="form-section">
+                    <h2>Clientes Cadastrados</h2>
+                    <ul id="client-list"></ul>
+                </div>
+            </div>
+            <div class="right-column">
+                <div class="form-section">
+                    <h2>Gerenciamento de Clientes</h2>
+                    <p>Crie um novo cliente (tenant) para usar o assistente de atendimento.</p>
+                    <form id="create-tenant-form">
+                        <label for="tenant_id_create">Nome do Cliente ou da Empresa</label>
+                        <input type="text" id="tenant_id_create" name="tenant_id" required>
 
-        <div class="form-section">
-            <h2>Gerenciamento de Clientes</h2>
-            <p>Crie um novo cliente (tenant) para usar o assistente de atendimento.</p>
-            <form>
-                <label for="tenant_id">Nome do Cliente ou da Empresa</label>
-                <input type="text" id="tenant_id" name="tenant_id" required>
+                        <label for="id_pronpt_create">Nome da Personalidade da IA</label>
+                        <input type="text" id="id_pronpt_create" name="id_pronpt" required>
 
-                <label for="id_pronpt">Nome da Personalidade da IA</label>
-                <input type="text" id="id_pronpt" name="id_pronpt" required>
+                        <label for="config_ai_create">Configuração da IA (JSON)</label>
+                        <textarea id="config_ai_create" name="config_ai" rows="5" required></textarea>
 
-                <label for="config_ai">Configuração da IA (JSON)</label>
-                <textarea id="config_ai" name="config_ai" rows="5" required></textarea>
+                        <label for="evolution_api_key_create">Chave da API Evolution</label>
+                        <input type="text" id="evolution_api_key_create" name="evolution_api_key">
 
-                <label for="evolution_api_key">Chave da API Evolution</label>
-                <input type="text" id="evolution_api_key" name="evolution_api_key">
+                        <button type="submit">Salvar Cliente</button>
+                    </form>
+                </div>
 
-                <button type="submit">Salvar Cliente</button>
-            </form>
-        </div>
+                <div class="form-section">
+                    <h2>Atualizar Cliente Existente</h2>
+                    <form id="update-tenant-form">
+                        <label for="tenant_id_update">ID do Cliente a Atualizar</label>
+                        <input type="text" id="tenant_id_update" name="tenant_id" required readonly>
 
-        <div class="form-section">
-            <h2>Product Catalog</h2>
-            <form id="upload-form" enctype="multipart/form-data">
-                <label for="tenant_id_upload">Client ID (Tenant ID)</label>
-                <input type="text" id="tenant_id_upload" name="tenant_id" required>
-                <label for="file">Upload Excel File</label>
-                <input type="file" id="file" name="file" accept=".xlsx, .xls" required>
-                <button type="submit">Upload Products</button>
-            </form>
-        </div>
+                        <label for="id_pronpt_update">Nome da Personalidade da IA</label>
+                        <input type="text" id="id_pronpt_update" name="id_pronpt" required>
 
-        <div class="form-section">
-            <h2>Client Products</h2>
-            <form id="view-products-form">
-                <label for="tenant_id_view">Client ID (Tenant ID)</label>
-                <input type="text" id="tenant_id_view" name="tenant_id" required>
-                <button type="submit">View Products</button>
-            </form>
-            <div id="product-list"></div>
+                        <label for="config_ai_update">Configuração da IA (JSON)</label>
+                        <textarea id="config_ai_update" name="config_ai" rows="5" required></textarea>
+
+                        <label for="evolution_api_key_update">Chave da API Evolution</label>
+                        <input type="text" id="evolution_api_key_update" name="evolution_api_key">
+
+                        <label for="is_active_update">Cliente Ativo?</label>
+                        <input type="checkbox" id="is_active_update" name="is_active" checked>
+
+                        <button type="submit">Atualizar Cliente</button>
+                    </form>
+                </div>
+
+                <div class="form-section">
+                    <h2>Product Catalog</h2>
+                    <form id="upload-form" enctype="multipart/form-data">
+                        <label for="tenant_id_upload">Client ID (Tenant ID)</label>
+                        <input type="text" id="tenant_id_upload" name="tenant_id" required>
+                        <label for="file">Upload Excel File</label>
+                        <input type="file" id="file" name="file" accept=".xlsx, .xls" required>
+                        <button type="submit">Upload Products</button>
+                    </form>
+                </div>
+
+                <div class="form-section">
+                    <h2>Client Products</h2>
+                    <form id="view-products-form">
+                        <label for="tenant_id_view">Client ID (Tenant ID)</label>
+                        <input type="text" id="tenant_id_view" name="tenant_id" required>
+                        <button type="submit">View Products</button>
+                    </form>
+                    <div id="product-list"></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
+        async function fetchClients() {
+            const response = await fetch('/tenants/');
+            const clients = await response.json();
+            const clientList = document.getElementById('client-list');
+            clientList.innerHTML = '';
+            clients.forEach(client => {
+                const li = document.createElement('li');
+                li.className = 'client-item';
+                li.textContent = `ID: ${client.tenant_id} (Personalidade: ${client.id_pronpt})`;
+                li.addEventListener('click', () => {
+                    // Remove 'selected' class from previously selected item
+                    const currentSelected = document.querySelector('.client-item.selected');
+                    if (currentSelected) {
+                        currentSelected.classList.remove('selected');
+                    }
+                    // Add 'selected' class to the clicked item
+                    li.classList.add('selected');
+
+                    document.getElementById('tenant_id_update').value = client.tenant_id;
+                    document.getElementById('id_pronpt_update').value = client.id_pronpt;
+                    document.getElementById('config_ai_update').value = client.config_ai;
+                    document.getElementById('evolution_api_key_update').value = client.evolution_api_key || '';
+                    document.getElementById('is_active_update').checked = client.is_active;
+                });
+                clientList.appendChild(li);
+            });
+        }
+
+        document.getElementById('create-tenant-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const tenantData = {};
+            formData.forEach((value, key) => {
+                tenantData[key] = value;
+            });
+            tenantData.is_active = document.getElementById('is_active_create') ? document.getElementById('is_active_create').checked : true;
+
+            try {
+                const response = await fetch('/tenants/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(tenantData)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Cliente criado com sucesso!');
+                    e.target.reset();
+                    fetchClients(); // Refresh client list
+                } else {
+                    alert(`Erro ao criar cliente: ${result.detail || response.statusText}`);
+                }
+            } catch (error) {
+                alert(`Erro de rede: ${error.message}`);
+            }
+        });
+
+        document.getElementById('update-tenant-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const tenantIdToUpdate = document.getElementById('tenant_id_update').value;
+            const formData = new FormData(e.target);
+            const tenantData = {};
+            formData.forEach((value, key) => {
+                tenantData[key] = value;
+            });
+            tenantData.is_active = document.getElementById('is_active_update').checked;
+
+            try {
+                const response = await fetch(`/tenants/${tenantIdToUpdate}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(tenantData)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    alert('Cliente atualizado com sucesso!');
+                    fetchClients(); // Refresh client list
+                } else {
+                    alert(`Erro ao atualizar cliente: ${result.detail || response.statusText}`);
+                }
+            } catch (error) {
+                alert(`Erro de rede: ${error.message}`);
+            }
+        });
+
         document.getElementById('upload-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -133,6 +391,9 @@
                 productList.innerHTML = '<p>No products found for this client.</p>';
             }
         });
+
+        // Fetch clients on page load
+        fetchClients();
     </script>
 </body>
 </html>
