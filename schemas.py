@@ -12,7 +12,6 @@ class TenantBase(BaseModel):
     config_ai: str
     evolution_api_key: Optional[str] = None
     is_active: bool = True
-    salvar_banco_de_dados_url: Optional[str] = None
     id_pronpt: str
 
 class TenantCreate(TenantBase):

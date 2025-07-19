@@ -48,24 +48,22 @@
         <h1>AI Customer Service Assistant - Configuration</h1>
 
         <div class="form-section">
-            <h2>Client Management</h2>
+            <h2>Gerenciamento de Clientes</h2>
+            <p>Crie um novo cliente (tenant) para usar o assistente de atendimento.</p>
             <form>
-                <label for="tenant_id">Client ID (Tenant ID)</label>
+                <label for="tenant_id">Nome do Cliente ou da Empresa</label>
                 <input type="text" id="tenant_id" name="tenant_id" required>
 
-                <label for="config_ai">AI Configuration (JSON)</label>
-                <textarea id="config_ai" name="config_ai" rows="5" required></textarea>
-
-                <label for="evolution_api_key">Evolution API Key</label>
-                <input type="text" id="evolution_api_key" name="evolution_api_key">
-
-                <label for="salvar_banco_de_dados_url">Database URL</label>
-                <input type="text" id="salvar_banco_de_dados_url" name="salvar_banco_de_dados_url">
-
-                <label for="id_pronpt">Personality Name</label>
+                <label for="id_pronpt">Nome da Personalidade da IA</label>
                 <input type="text" id="id_pronpt" name="id_pronpt" required>
 
-                <button type="submit">Save Client</button>
+                <label for="config_ai">Configuração da IA (JSON)</label>
+                <textarea id="config_ai" name="config_ai" rows="5" required></textarea>
+
+                <label for="evolution_api_key">Chave da API Evolution</label>
+                <input type="text" id="evolution_api_key" name="evolution_api_key">
+
+                <button type="submit">Salvar Cliente</button>
             </form>
         </div>
 

@@ -12,7 +12,6 @@ class Tenant(Base):
     config_ai = Column(Text, nullable=False)
     evolution_api_key = Column(String)
     is_active = Column(Boolean, default=True)
-    salvar_banco_de_dados_url = Column(String)
     id_pronpt = Column(String, ForeignKey("personalities.name"))
 
     personality = relationship("Personality")
