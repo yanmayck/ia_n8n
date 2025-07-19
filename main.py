@@ -8,6 +8,16 @@ import models
 import schemas
 import services
 from .database import SessionLocal, engine
+import os
+
+from dotenv import load_dotenv
+
+# Carrega as variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Verifica se a chave da API da Gemini está configurada
+if not os.getenv("GEMINI_API_KEY"):
+    raise ValueError("A variável de ambiente GEMINI_API_KEY não está configurada.")
 
 # Cria as tabelas no banco de dados (se não existirem)
 models.Base.metadata.create_all(bind=engine)
