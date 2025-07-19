@@ -34,6 +34,7 @@ class TenantConfigRequest(BaseModel):
 class PersonalityBase(BaseModel):
     name: str
     prompt: str
+    tenant_id: str
 
 class PersonalityCreate(PersonalityBase):
     pass
@@ -56,10 +57,47 @@ class AIWebhookRequest(BaseModel):
     user_phone: str = Field(default="unknown_user", alias="user_phone")
     whatsapp_message_id: str = Field(default="unknown_wpp_id", alias="whatsapp_message_id")
 
+class FileDetails(BaseModel):
+    retrieval_key: str
+    file_type: str
+
+class OrderItem(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: int
+    unit_price: str
+
+class OrderDetails(BaseModel):
+    order_id: str
+    total_price: str
+    items: List[OrderItem]
+
 class AIWebhookResponse(BaseModel):
     part_id: int
     type: str
     text_content: str
+    file_details: Optional[FileDetails] = None
+    order_details: Optional[OrderDetails] = None
+
+
+# =======================================================================
+# Esquemas para Produtos
+# =======================================================================
+
+class ProductBase(BaseModel):
+    name: str
+    price: str
+    retrieval_key: str
+    tenant_id: str
+
+class ProductCreate(ProductBase):
+    pass
+
+class Product(ProductBase):
+    id: int
+
+    class Config:
+        from_attributes = True
 
 # =======================================================================
 # Esquemas para Interação com o Banco de Dados

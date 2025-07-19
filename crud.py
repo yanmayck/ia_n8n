@@ -49,3 +49,21 @@ def get_interactions_by_user_phone(db: Session, user_phone: str, limit: int = 10
         .order_by(models.Interaction.created_at.desc())\
         .limit(limit)\
         .all()[::-1] # Inverte a lista para ter a ordem cronológica correta (mais antiga primeiro)
+
+
+# =======================================================================
+# Funções CRUD para Products
+# =======================================================================
+
+def get_product_by_retrieval_key(db: Session, retrieval_key: str):
+    return db.query(models.Product).filter(models.Product.retrieval_key == retrieval_key).first()
+
+def get_products_by_tenant_id(db: Session, tenant_id: str):
+    return db.query(models.Product).filter(models.Product.tenant_id == tenant_id).all()
+
+def create_product(db: Session, product: schemas.ProductCreate):
+    db_product = models.Product(**product.dict())
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product)
+    return db_product

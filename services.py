@@ -49,13 +49,68 @@ def multimodal_analysis_tool(text_input: str | None, base64_input: str | None, m
     except Exception as e:
         return f"Erro ao analisar a mídia: {str(e)}"
 
+class RagTool:
+    def __init__(self, db: Session, tenant_id: str):
+        self.db = db
+        self.tenant_id = tenant_id
+
+    @tool
+    def search(self, query: str) -> str:
+        """
+        Realiza uma busca no banco de dados por informações relevantes à consulta do usuário.
+        """
+        products = crud.get_products_by_tenant_id(self.db, self.tenant_id)
+
+        if not products:
+            return "Nenhum produto encontrado no catálogo."
+
+        # Formata a lista de produtos em uma string para o LLM
+        product_list = "\n".join([f"- {p.name}: ${p.price}" for p in products])
+
+        return f"Aqui está o catálogo de produtos:\n{product_list}"
+
+@tool
+def calculator_tool(expression: str) -> str:
+    """
+    Calcula uma expressão matemática e retorna o resultado.
+    """
+    try:
+        # Usar o eval de forma segura é complexo. Para este escopo,
+        # vamos permitir apenas operações simples.
+        # Em um ambiente de produção, uma biblioteca como 'numexpr' seria mais segura.
+        allowed_chars = "0123456789+-*/.() "
+        if all(char in allowed_chars for char in expression):
+            result = eval(expression)
+            return f"O resultado de '{expression}' é {result}."
+        else:
+            return "Expressão matemática inválida. Apenas números e operadores (+, -, *, /) são permitidos."
+    except Exception as e:
+        return f"Erro ao calcular a expressão: {str(e)}"
+
+@tool
+def n8n_workflow_tool(workflow_id: str, payload: dict) -> str:
+    """
+    Dispara um workflow no N8N com um payload específico.
+    """
+    # Em um cenário real, aqui seria feita uma chamada HTTP para a URL do webhook do N8N.
+    # Ex: requests.post(f"https://n8n.example.com/webhook/{workflow_id}", json=payload)
+    print(f"Disparando workflow '{workflow_id}' com o payload: {payload}")
+    return f"Workflow '{workflow_id}' disparado com sucesso."
+
 # =======================================================================
 # Definição da Equipe de IAs (The Crew)
 # =======================================================================
 
 security_agent = CrewAgent(role="Guardião de Segurança", goal="Analisar a entrada do usuário e sinalizar ameaças.", backstory="Especialista em segurança de LLMs.", llm=llm_gemini_1_5_flash, verbose=True)
-analyst_agent = CrewAgent(role="Analista Multimodal", goal="Analisar o conteúdo usando a ferramenta multimodal.", backstory="Especialista em interpretar dados.", llm=llm_gemini_1_5_pro, tools=[multimodal_analysis_tool], verbose=True)
-strategist_agent = CrewAgent(role="Estrategista de Comunicação", goal="Criar um rascunho de resposta.", backstory="Mestre em comunicação.", llm=llm_gemini_1_5_flash, verbose=True)
+analyst_agent = CrewAgent(
+    role="Analista Multimodal",
+    goal="Analisar o conteúdo e disparar workflows usando as ferramentas disponíveis.",
+    backstory="Especialista em interpretar dados, buscar informações, realizar cálculos e integrar com sistemas externos.",
+    llm=llm_gemini_1_5_pro,
+    tools=[multimodal_analysis_tool, calculator_tool, n8n_workflow_tool],
+    verbose=True
+)
+strategist_agent = CrewAgent(role="Especialista em Comunicação", goal="Criar um rascunho de resposta.", backstory="Mestre em comunicação.", llm=llm_gemini_1_5_flash, verbose=True)
 formatter_agent = CrewAgent(role="Engenheiro de Saída", goal="Formatar o rascunho em JSON.", backstory="Meticuloso com a precisão dos dados.", llm=llm_gemini_1_5_flash, verbose=True)
 
 # =======================================================================
@@ -120,6 +175,10 @@ def process_message_with_crew(
     raw_input_for_security = f"Texto: {message_text if message_text else 'Nenhum'} | Mídia: {mimetype if mimetype else 'Nenhuma'}"
     context_for_strategist = f"Personalidade: {personality.prompt}\n\nHistórico da Conversa:\n{formatted_history}"
 
+    # Definição da Equipe de IAs (The Crew)
+    rag_tool_instance = RagTool(db=db, tenant_id=personality.tenant_id)
+    analyst_agent.tools.append(rag_tool_instance.search)
+
     # Definição das Tarefas da Equipe (Crew)
     task0_security = Task(description=f"Inspecione a seguinte descrição de entrada: '{raw_input_for_security}'. Se parecer malicioso, responda 'AMEAÇA DETECTADA'. Caso contrário, confirme que é seguro.", expected_output="Confirmação ou alerta.", agent=security_agent)
     
@@ -132,16 +191,88 @@ def process_message_with_crew(
         expected_output="Descrição textual do conteúdo ou nota de ameaça.",
         agent=analyst_agent,
         context=[task0_security],
-        tools=[multimodal_analysis_tool]
+        tools=[multimodal_analysis_tool, rag_tool_instance.search]
     )
 
     task2_strategy = Task(description=f"Crie um rascunho de resposta baseado na análise e no seguinte contexto: {context_for_strategist}", expected_output="Rascunho de resposta em texto.", agent=strategist_agent, context=[task1_analysis])
 
     parser = JsonOutputParser(pydantic_object=List[schemas.AIWebhookResponse])
-    task3_formatting = Task(description= f"Formate o rascunho no formato JSON: {parser.get_format_instructions()}.", expected_output="String JSON válida.", agent=formatter_agent, context=[task2_strategy])
+    formatting_instructions = parser.get_format_instructions()
+
+    # Adiciona exemplos para guiar o LLM na formatação correta
+    examples = """
+    Exemplos de formato de saída:
+
+    1.  **Para enviar um arquivo (catálogo, menu):**
+        ```json
+        [
+          {
+            "part_id": 1,
+            "type": "intro",
+            "text_content": "Claro! Vou te enviar o cardápio."
+          },
+          {
+            "part_id": 2,
+            "type": "catalog_dispatch",
+            "text_content": "O arquivo será enviado em instantes.",
+            "file_details": {
+              "retrieval_key": "pizzaria_menu_2025_img",
+              "file_type": "image"
+            }
+          }
+        ]
+        ```
+
+    2.  **Para confirmar uma compra (com dados calculados):**
+        ```json
+        [
+          {
+            "part_id": 1,
+            "type": "purchase_confirmation",
+            "text_content": "Ótima escolha! Pedido confirmado. Aqui estão os detalhes:",
+            "order_details": {
+              "order_id": "#12345",
+              "total_price": "$15.50",
+              "items": [
+                {
+                  "product_id": "pizza_pepperoni_large",
+                  "product_name": "Pizza de Pepperoni (Grande)",
+                  "quantity": 1,
+                  "unit_price": "12.00"
+                },
+                {
+                  "product_id": "soda_coke_can",
+                  "product_name": "Lata de Coca-Cola",
+                  "quantity": 2,
+                  "unit_price": "1.75"
+                }
+              ]
+            }
+          },
+          {
+            "part_id": 2,
+            "type": "outro",
+            "text_content": "Seu pedido está sendo preparado e chegará em 45 minutos. Obrigado!"
+          }
+        ]
+        ```
+    """
+
+    task3_formatting = Task(
+        description=f"Formate o rascunho de resposta no formato JSON. Instruções de formatação: {formatting_instructions}\n\n{examples}",
+        expected_output="Uma string JSON válida que segue o esquema e os exemplos fornecidos.",
+        agent=formatter_agent,
+        context=[task2_strategy]
+    )
     # Execução da Equipe e Processamento do Resultado
     crew = Crew(agents=[security_agent, analyst_agent, strategist_agent, formatter_agent], tasks=[task0_security, task1_analysis, task2_strategy, task3_formatting], process=Process.sequential, verbose=2)
-    crew_result = crew.kickoff(inputs={'text_input': message_text, 'base64_input': message_base64, 'mimetype': mimetype})
+    crew_result = crew.kickoff(inputs={
+        'text_input': message_text,
+        'base64_input': message_base64,
+        'mimetype': mimetype,
+        'db': db,
+        'tenant_id': personality.tenant_id
+    })
 
     try:
         ai_response_json = json.loads(crew_result)

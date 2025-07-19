@@ -9,6 +9,7 @@ langchain
 langchain-google-genai
 agno
 crewai
+jinja2
 
 # Descomente a linha abaixo se você for usar o Supabase (PostgreSQL)
 # psycopg2-binary

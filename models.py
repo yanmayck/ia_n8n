@@ -23,8 +23,10 @@ class Personality(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     prompt = Column(Text, nullable=False)
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"))
 
     interactions = relationship("Interaction", back_populates="personality")
+    tenant = relationship("Tenant")
 
 class Interaction(Base):
     __tablename__ = "interactions"
@@ -38,3 +40,15 @@ class Interaction(Base):
 
     personality_id = Column(Integer, ForeignKey("personalities.id"))
     personality = relationship("Personality", back_populates="interactions")
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    price = Column(String, nullable=False)
+    retrieval_key = Column(String, unique=True, index=True, nullable=False)
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"))
+
+    tenant = relationship("Tenant")

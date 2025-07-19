@@ -1,5 +1,6 @@
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import List
 import crud
@@ -16,6 +17,16 @@ app = FastAPI(
     description="Processa mensagens multimodais (texto, imagem, áudio) usando uma equipe de agentes de IA.",
     version="3.0.0"
 )
+
+templates = Jinja2Templates(directory="templates")
+
+# =======================================================================
+# Rota para a Interface Visual
+# =======================================================================
+
+@app.get("/", tags=["Interface"])
+def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 # =======================================================================
 # Evento de Inicialização para Listar Rotas
@@ -105,3 +116,21 @@ def create_personality(personality: schemas.PersonalityCreate, db: Session = Dep
     if db_personality:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Personalidade com o nome '{personality.name}' já existe.")
     return crud.create_personality(db=db, personality=personality)
+
+# =======================================================================
+# Endpoint para Recuperação de Arquivos
+# =======================================================================
+
+@app.get("/get-file/{retrieval_key}", tags=["Files"])
+def get_file(retrieval_key: str, db: Session = Depends(get_db)):
+    # Em um cenário real, o arquivo seria buscado de um S3, Google Drive, etc.
+    # e retornado com o content-type correto (e.g., image/png, application/pdf).
+
+    # Simulação: verificar se a chave existe em algum produto
+    product = crud.get_product_by_retrieval_key(db, retrieval_key=retrieval_key)
+
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Arquivo não encontrado com esta chave.")
+
+    # Simulação da resposta
+    return {"message": f"Arquivo para a chave '{retrieval_key}' seria entregue aqui.", "product_name": product.name}

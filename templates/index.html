@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Customer Service Assistant - Configuration</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 2em;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-section {
+            background: #f4f4f4;
+            padding: 1em;
+            border-radius: 5px;
+            margin-bottom: 1em;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5em;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 0.5em;
+            margin-bottom: 1em;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        button {
+            background: #333;
+            color: #fff;
+            padding: 0.5em 1em;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Customer Service Assistant - Configuration</h1>
+
+        <div class="form-section">
+            <h2>Client Management</h2>
+            <form>
+                <label for="tenant_id">Client ID (Tenant ID)</label>
+                <input type="text" id="tenant_id" name="tenant_id" required>
+
+                <label for="config_ai">AI Configuration (JSON)</label>
+                <textarea id="config_ai" name="config_ai" rows="5" required></textarea>
+
+                <label for="evolution_api_key">Evolution API Key</label>
+                <input type="text" id="evolution_api_key" name="evolution_api_key">
+
+                <label for="salvar_banco_de_dados_url">Database URL</label>
+                <input type="text" id="salvar_banco_de_dados_url" name="salvar_banco_de_dados_url">
+
+                <label for="id_pronpt">Personality Name</label>
+                <input type="text" id="id_pronpt" name="id_pronpt" required>
+
+                <button type="submit">Save Client</button>
+            </form>
+        </div>
+
+        <div class="form-section">
+            <h2>Product Catalog</h2>
+            <form>
+                <label for="product_name">Product Name</label>
+                <input type="text" id="product_name" name="product_name" required>
+
+                <label for="product_price">Price</label>
+                <input type="text" id="product_price" name="product_price" required>
+
+                <label for="retrieval_key">Retrieval Key</label>
+                <input type="text" id="retrieval_key" name="retrieval_key" required>
+
+                <label for="product_tenant_id">Client ID (Tenant ID)</label>
+                <input type="text" id="product_tenant_id" name="product_tenant_id" required>
+
+                <button type="submit">Add Product</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
