@@ -10,6 +10,8 @@ langchain-google-genai
 agno
 crewai
 jinja2
+pandas
+openpyxl
 
 # Descomente a linha abaixo se você for usar o Supabase (PostgreSQL)
 # psycopg2-binary

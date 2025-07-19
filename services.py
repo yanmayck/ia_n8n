@@ -2,6 +2,8 @@ import os
 import json
 from sqlalchemy.orm import Session
 from typing import List
+import pandas as pd
+from fastapi import UploadFile
 
 # Frameworks de IA
 from crewai import Agent as CrewAgent, Task, Crew, Process
@@ -150,10 +152,27 @@ def check_for_human_transfer_request(user_input: str, ai_response: str) -> bool:
 # Lógica de Serviço Principal
 # =======================================================================
 
+async def process_product_sheet(tenant_id: str, file: UploadFile, db: Session) -> List[schemas.Product]:
+    try:
+        df = pd.read_excel(file.file)
+        products = []
+        for _, row in df.iterrows():
+            product_data = schemas.ProductCreate(
+                name=row['name'],
+                price=str(row['price']),
+                retrieval_key=row['retrieval_key'],
+                tenant_id=tenant_id
+            )
+            product = crud.create_product(db, product_data)
+            products.append(product)
+        return products
+    except Exception as e:
+        raise ValueError(f"Erro ao processar a planilha: {e}")
+
 def process_message_with_crew(
-    db: Session, 
-    user_phone: str, 
-    whatsapp_message_id: str, 
+    db: Session,
+    user_phone: str,
+    whatsapp_message_id: str,
     message_text: str | None,
     message_base64: str | None,
     mimetype: str | None,

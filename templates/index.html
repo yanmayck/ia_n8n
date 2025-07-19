@@ -71,22 +71,70 @@
 
         <div class="form-section">
             <h2>Product Catalog</h2>
-            <form>
-                <label for="product_name">Product Name</label>
-                <input type="text" id="product_name" name="product_name" required>
-
-                <label for="product_price">Price</label>
-                <input type="text" id="product_price" name="product_price" required>
-
-                <label for="retrieval_key">Retrieval Key</label>
-                <input type="text" id="retrieval_key" name="retrieval_key" required>
-
-                <label for="product_tenant_id">Client ID (Tenant ID)</label>
-                <input type="text" id="product_tenant_id" name="product_tenant_id" required>
-
-                <button type="submit">Add Product</button>
+            <form id="upload-form" enctype="multipart/form-data">
+                <label for="tenant_id_upload">Client ID (Tenant ID)</label>
+                <input type="text" id="tenant_id_upload" name="tenant_id" required>
+                <label for="file">Upload Excel File</label>
+                <input type="file" id="file" name="file" accept=".xlsx, .xls" required>
+                <button type="submit">Upload Products</button>
             </form>
         </div>
+
+        <div class="form-section">
+            <h2>Client Products</h2>
+            <form id="view-products-form">
+                <label for="tenant_id_view">Client ID (Tenant ID)</label>
+                <input type="text" id="tenant_id_view" name="tenant_id" required>
+                <button type="submit">View Products</button>
+            </form>
+            <div id="product-list"></div>
+        </div>
     </div>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const response = await fetch('/upload-products', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            alert(result.message);
+        });
+
+        document.getElementById('view-products-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const tenantId = document.getElementById('tenant_id_view').value;
+            const response = await fetch(`/products/${tenantId}`);
+            const products = await response.json();
+            const productList = document.getElementById('product-list');
+            productList.innerHTML = '';
+            if (products.length > 0) {
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Price</th>
+                            <th>Retrieval Key</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${products.map(p => `
+                            <tr>
+                                <td>${p.name}</td>
+                                <td>${p.price}</td>
+                                <td>${p.retrieval_key}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                `;
+                productList.appendChild(table);
+            } else {
+                productList.innerHTML = '<p>No products found for this client.</p>';
+            }
+        });
+    </script>
 </body>
 </html>

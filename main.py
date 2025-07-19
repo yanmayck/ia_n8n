@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from typing import List
@@ -134,3 +134,15 @@ def get_file(retrieval_key: str, db: Session = Depends(get_db)):
 
     # Simulação da resposta
     return {"message": f"Arquivo para a chave '{retrieval_key}' seria entregue aqui.", "product_name": product.name}
+
+@app.post("/upload-products", tags=["Products"])
+async def upload_products(tenant_id: str, file: UploadFile, db: Session = Depends(get_db)):
+    try:
+        products = await services.process_product_sheet(tenant_id, file, db)
+        return {"message": f"{len(products)} products uploaded successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+@app.get("/products/{tenant_id}", response_model=List[schemas.Product], tags=["Products"])
+def get_products(tenant_id: str, db: Session = Depends(get_db)):
+    return crud.get_products_by_tenant_id(db, tenant_id=tenant_id)
