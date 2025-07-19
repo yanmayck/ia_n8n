@@ -7,7 +7,7 @@ import crud
 import models
 import schemas
 import services
-from .database import SessionLocal, engine
+from database import SessionLocal, engine
 import os
 
 from dotenv import load_dotenv
