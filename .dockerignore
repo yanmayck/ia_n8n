@@ -1,0 +1,10 @@
+# Ignorar arquivos e diretórios para o Docker build
+
+.env
+venv/
+__pycache__/
+*.pyc
+*.log
+.git/
+.gitignore 
+logs

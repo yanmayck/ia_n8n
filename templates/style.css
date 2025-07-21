@@ -1,0 +1,269 @@
+/* Login Styles */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #1a1a2e; /* Dark background color */
+}
+
+.login-box {
+    background: #2a2a4a; /* Darker background for box */
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5); /* More prominent shadow */
+    text-align: center;
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-box h2 {
+    color: #e0e0e0; /* Light text for heading */
+    margin-bottom: 30px;
+    border-bottom: none;
+    font-size: 1.8em;
+}
+
+.login-box input[type="password"] {
+    width: calc(100% - 20px);
+    padding: 12px;
+    margin-bottom: 20px;
+    border: 1px solid #444; /* Darker border */
+    border-radius: 5px;
+    font-size: 1.1rem;
+    background-color: #3a3a5a; /* Dark input background */
+    color: #e0e0e0; /* Light input text */
+}
+
+.login-box button {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1rem;
+    background: #4a4a8a; /* Darker blue/purple for login */
+    border: none;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.login-box button:hover {
+    background: #5a5ab0; /* Lighter on hover */
+}
+
+.login-error-message {
+    color: #ff6b6b; /* Softer red for error */
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+/* General Body and Typography */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    background-color: #1a1a2e; /* Dark background */
+    color: #e0e0e0; /* Light text */
+    line-height: 1.6;
+}
+
+h1 {
+    color: #ffffff; /* White for main heading */
+    text-align: center;
+    padding: 20px 0;
+    margin-bottom: 20px;
+    background-color: #2a2a4a; /* Darker background for header */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3); /* Darker shadow */
+}
+
+h2 {
+    color: #e0e0e0; /* Light text for subheadings */
+    margin-bottom: 15px;
+    border-bottom: 2px solid #3a3a5a; /* Darker border */
+    padding-bottom: 5px;
+}
+
+/* Container and Layout */
+.container {
+    padding: 20px;
+}
+
+.main-container {
+    display: flex;
+    gap: 25px;
+    max-width: 1300px;
+    margin: 20px auto;
+    align-items: flex-start;
+}
+
+.left-column {
+    flex: 0 0 300px;
+    min-width: 250px;
+}
+
+.right-column {
+    flex: 1;
+}
+
+/* Form Sections */
+.form-section {
+    background: #2a2a4a; /* Dark background for sections */
+    padding: 25px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4); /* Darker shadow */
+    transition: transform 0.2s ease-in-out;
+}
+
+.form-section:hover {
+    transform: translateY(-3px);
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    color: #b0b0b0; /* Lighter gray for labels */
+}
+
+input[type="text"], 
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="file"],
+textarea,
+select {
+    width: calc(100% - 20px);
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #444; /* Darker border */
+    border-radius: 5px;
+    box-sizing: border-box;
+    font-size: 1rem;
+    background-color: #3a3a5a; /* Dark input background */
+    color: #e0e0e0; /* Light input text */
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="file"]:focus,
+textarea:focus,
+select:focus {
+    border-color: #7a7ac0; /* Highlight border on focus */
+    box-shadow: 0 0 5px rgba(122, 122, 192, 0.5); /* Sutil sombra no foco */
+    outline: none;
+}
+
+input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+button {
+    background: #4a4a8a; /* Darker blue/purple button */
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease;
+}
+
+button:hover {
+    background: #5a5ab0; /* Lighter on hover */
+    transform: translateY(-1px);
+}
+
+/* Client List Specifics */
+#client-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.client-item {
+    background-color: #3a3a5a; /* Darker background for items */
+    border: 1px solid #4a4a6a; /* Darker border */
+    margin-bottom: 8px;
+    padding: 12px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+
+.client-item:hover {
+    background-color: #4a4a70; /* Slightly lighter on hover */
+    transform: translateX(5px);
+}
+
+.client-item.selected {
+    background-color: #5a5aa0; /* Highlight selected client */
+    border-color: #7a7ac0;
+}
+
+.client-item button {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    margin-left: 5px;
+}
+/* Adjust specific button colors for dark theme */
+.client-item button[onclick*="editClient"] {
+    background: #f39c12; /* Orange */
+}
+.client-item button[onclick*="editClient"]:hover {
+    background: #e67e22; /* Darker orange */
+}
+.client-item button[onclick*="toggleClientStatus"][style*="background: #e74c3c;"] { /* Desativar button */
+    background: #c0392b !important; /* Darker red */
+}
+.client-item button[onclick*="toggleClientStatus"][style*="background: #27ae60;"] { /* Ativar button */
+    background: #229954 !important; /* Darker green */
+}
+.client-item button[onclick*="deleteClient"] {
+    background: #a93226 !important; /* Even darker red */
+}
+
+
+/* Table Styling (for Product List) */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3); /* Darker shadow */
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+th,
+td {
+    border: 1px solid #3a3a5a; /* Darker border */
+    padding: 12px 15px;
+    text-align: left;
+}
+
+th {
+    background-color: #3a3a5a; /* Darker background */
+    color: #e0e0e0; /* Light text */
+    font-weight: bold;
+}
+
+tr:nth-child(even) {
+    background-color: #2a2a4a; /* Even darker rows */
+}
+
+tr:hover {
+    background-color: #4a4a70; /* Slightly lighter on hover */
+}
+
+/* Responsive adjustments (optional, but good practice) */
+@media (max-width: 768px) {
+    .main-container {
+        flex-direction: column;
+    }
+    .left-column {
+        flex: none;
+        width: 100%;
+    }
+} 

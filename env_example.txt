@@ -1,0 +1,29 @@
+    # Variáveis de Conexão do Banco de Dados (Supabase Transaction Pooler)
+POSTGRES_USER="postgres"
+POSTGRES_PASSWORD="cabecadepicles"
+SUPABASE_PROJECT_REF="vewcowruacalrstslaqm"
+POSTGRES_DB="postgres" # <-- Use a sua referência de projeto correta
+# Chave secreta para JWT (gerar uma string longa e aleatória)
+# Ex: openssl rand -hex 32
+SECRET_KEY="2e2fd3c165aeea03ba0c39f392b7214f33f52959d15517bec3991f6f5e0f8efd"
+
+# Senha para acesso à interface de administração (altere para uma senha forte)
+ADMIN_PASSWORD="Cabecadep1cle&"
+
+# Chave de API para o Gemini (substitua pela sua chave real)
+GEMINI_API_KEY="AIzaSyB0NzPlJn_PE5Hmwkax7gr63cB379f0Q4I"
+
+# Chave de API para o Google Maps (para cálculo de frete)
+GOOGLE_MAPS_API_KEY="AIzaSyD4xG_IRXxXQimHwNlSiqTkDNHVcpDrpqA"
+
+
+EVOLUTION_API_KEY="sua_chave_evolution_api_aqui"
+DATABASE_POOLER_URL="postgresql://postgres:cabecadepicles@db.vewcowruacalrstslaqm.supabase.co:5432/postgres"
+# Supabase Configuration
+SUPABASE_URL="https://vewcowruacalrstslaqm.supabase.co"
+SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZld2Nvd3J1YWNhbHJzdHNsYXFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI5NzI1MDUsImV4cCI6MjA2ODU0ODUwNX0.9igl2KancntIH_bgxXHQezYU7yTVlTi5-kfXn6b-GSo"
+SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZld2Nvd3J1YWNhbHJzdHNsYXFtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1Mjk3MjUwNSwiZXhwIjoyMDY4NTQ4NTA1fQ.l_LthV1KIWLUhm28iZrb9579_UQ5jlmxFJ8tC0QBsr4"
+SUPABASE_PROJECT_REF="vewcowruacalrstslaqm"
+
+# Outras configurações
+DEBUG=True 

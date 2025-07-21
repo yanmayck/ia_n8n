@@ -2,17 +2,24 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from database import Base
+from core.database import Base
 
 class Tenant(Base):
     __tablename__ = "tenants"
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(String, unique=True, index=True, nullable=False)
-    config_ai = Column(Text, nullable=False)
+    tenant_id = Column(String, unique=True, index=True, nullable=False)  # Instância
+    nome_loja = Column(String, nullable=False)  # Nome da loja para identificação
+    config_ai = Column(Text, nullable=False)  # Descrição da empresa
     evolution_api_key = Column(String)
     is_active = Column(Boolean, default=True)
     id_pronpt = Column(String, ForeignKey("personalities.name"))
+    endereco = Column(String)
+    cep = Column(String)
+    latitude = Column(String)
+    longitude = Column(String)
+    url = Column(String)  # URL da instância
+    menu_image_url = Column(String, nullable=True) # Nova coluna para a URL da imagem do cardápio
 
     personality = relationship("Personality", foreign_keys=[id_pronpt])
 
@@ -49,5 +56,13 @@ class Product(Base):
     price = Column(String, nullable=False)
     retrieval_key = Column(String, unique=True, index=True, nullable=False)
     tenant_id = Column(String, ForeignKey("tenants.tenant_id"))
+    
+    # Novas colunas para os dados do Excel
+    publico_alvo = Column(Text, nullable=True) # Coluna para 'Público-Alvo'
+    principais_funcionalidades = Column(Text, nullable=True) # Coluna para 'Principais Funcionalidades'
+    limitacoes_observacoes = Column(Text, nullable=True) # Coluna para 'Limitações / Observações'
+    produto_promocao = Column(Boolean, nullable=True) # Coluna para 'produto_promocao'
+    preco_promotions = Column(String, nullable=True) # Coluna para 'preco_promotions'
+    combo_product = Column(String, nullable=True) # Coluna para 'combo_product'
 
     tenant = relationship("Tenant")
