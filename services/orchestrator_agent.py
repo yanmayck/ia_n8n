@@ -14,6 +14,8 @@ from agno.models.google import Gemini
 from agno.storage.postgres import PostgresStorage
 from agno.memory.v2.memory import Memory
 from agno.media import Audio, Image, Video
+from agno.workflow.v2 import Workflow, Router, Step
+from agno.workflow.v2.step import StepInput, StepOutput
 
 from core import schemas
 from core.database import DATABASE_URL, SessionLocal
@@ -72,7 +74,52 @@ class OrchestratorAgent:
         self.menu_agent = get_menu_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key)
         self.freight_agent = get_freight_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2)
         self.file_understanding_agent = get_file_understanding_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2)
-        self.order_taking_agent = get_order_taking_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2)
+        self.order_taking_agent = get_order_taking_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2, memory=self.memory)
+
+        # Etapa 1: Criar os Steps
+        self.human_handoff_step = Step(
+            name="human_handoff",
+            executor=self._handle_human_handoff_wrapper,
+            description="Encaminha a conversa para um atendente humano."
+        )
+        self.menu_step = Step(
+            name="menu",
+            executor=self._handle_menu_request_wrapper,
+            description="Envia o cardápio para o usuário."
+        )
+        self.freight_step = Step(
+            name="freight",
+            agent=self.freight_agent,
+            description="Calcula o frete para o endereço do usuário."
+        )
+        self.order_taking_step = Step(
+            name="order_taking",
+            executor=self._handle_order_taking_wrapper,
+            description="Anota e gerencia os pedidos do usuário."
+        )
+        self.general_response_step = Step(
+            name="general_response",
+            executor=self._handle_general_response_wrapper,
+            description="Responde a perguntas gerais e saudações."
+        )
+
+        # Etapa 2: Construir o Workflow com o Router
+        self.workflow = Workflow(
+            name="Chatbot Workflow",
+            steps=[
+                Router(
+                    name="Main Router",
+                    selector=self._route_by_context,
+                    choices=[
+                        self.human_handoff_step,
+                        self.menu_step,
+                        self.freight_step,
+                        self.order_taking_step,
+                        self.general_response_step,
+                    ]
+                )
+            ]
+        )
 
     async def _get_order_state(self) -> OrderState:
         logger.debug(f"Recuperando estado do pedido para session_id: {self.composite_session_id}")
@@ -102,31 +149,36 @@ class OrchestratorAgent:
             final_response = AIResponse(response_text="", human_handoff=False, send_menu=False)
 
             if file_content and mimetype:
-                transcribed_message = await self._handle_file_understanding(file_content, mimetype, final_response)
-                if transcribed_message:
-                    message = transcribed_message
-                else:
-                    return final_response
+                message = await self._handle_file_understanding(file_content, mimetype, final_response) or message
 
             if order_state.status.startswith("pending_"):
                 return await self._handle_pending_confirmation(db, order_state, message, final_response, client_latitude, client_longitude)
 
-            greeting = await self._get_greeting(message)
+            # Executa o workflow
+            workflow_response = await self.workflow.arun(
+                message=message,
+                additional_data={
+                    "final_response": final_response,
+                    "order_state": order_state,
+                    "client_latitude": client_latitude,
+                    "client_longitude": client_longitude,
+                    "personality_prompt": personality_prompt,
+                    "db": db,
+                }
+            )
 
-            agent_to_call = await self._decide_agent_to_call(message, order_state, client_latitude, client_longitude)
-            logger.info(f"Orquestrador decidiu chamar: '{agent_to_call}'")
+            final_response = workflow_response.content
 
-            if agent_to_call == "order_taking_agent":
-                await self._handle_order_taking(db, order_state, message, final_response)
-            elif agent_to_call == "human_handoff_agent":
-                self._handle_human_handoff(final_response)
-            elif agent_to_call == "menu_agent":
-                self._handle_menu_request(final_response)
-            else:
-                await self._handle_general_response(message, personality_prompt, final_response)
-
-            if greeting:
-                final_response.response_text = f"{greeting} {final_response.response_text}"
+            # Lógica de Saudação: Adiciona apenas na primeira interação do dia.
+            now = datetime.now()
+            last_interaction = USER_LAST_INTERACTION.get(self.composite_session_id)
+            if last_interaction is None or last_interaction.date() < now.date():
+                tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, self.tenant_id)
+                nome_loja = tenant.nome_loja if tenant else self.tenant_id
+                greeting = f"Olá! Bem-vindo(a) ao Atendente Virtual da {nome_loja}. "
+                final_response.response_text = greeting + final_response.response_text
+            
+            USER_LAST_INTERACTION[self.composite_session_id] = now
 
             await self._save_order_state(order_state)
             logger.debug(f"Final response before returning from process_message: {final_response.response_text}")
@@ -134,23 +186,7 @@ class OrchestratorAgent:
         finally:
             db.close()
 
-    async def _get_greeting(self, message: str) -> Optional[str]:
-        now = datetime.now()
-        last_interaction = USER_LAST_INTERACTION.get(self.composite_session_id)
-        USER_LAST_INTERACTION[self.composite_session_id] = now
-
-        is_first_interaction_today = last_interaction is None or last_interaction.date() < now.date()
-        intent = (await self._get_intent_agent().arun(message)).content.strip().lower()
-
-        if is_first_interaction_today or intent == 'saudacao':
-            db = SessionLocal()
-            try:
-                tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, self.tenant_id)
-                nome_loja = tenant.nome_loja if tenant else self.tenant_id
-                return f"Olá! Bem-vindo(a) ao Atendente Virtual da {nome_loja}."
-            finally:
-                db.close()
-        return None
+    
 
     # Adicionando as novas funções auxiliares aqui
     async def _handle_pending_confirmation(self, db: Session, order_state: OrderState, message: str, final_response: AIResponse, client_latitude: Optional[float], client_longitude: Optional[float]):
@@ -224,11 +260,18 @@ class OrchestratorAgent:
         return Agent(
             model=Gemini(id="gemini-2.0-flash", api_key=self.gemini_api_key),
             description=(
-                "Sua única tarefa é classificar a intenção do usuário. "
-                "Responda com APENAS UMA das seguintes palavras: "
-                "'pergunta_produto', 'pedido', 'saudacao', 'despedida', 'frete', 'menu', 'falar_com_humano', 'outro'."
-            )
+            """Sua única tarefa é classificar a intenção do usuário. Responda com APENAS UMA das seguintes palavras:
+            - 'pergunta_produto': Para perguntas sobre produtos, incluindo pedidos para listar, procurar, ou saber qual é o mais caro/barato.
+            - 'pedido': Para adicionar itens a um pedido.
+            - 'saudacao': Para cumprimentos como 'oi', 'bom dia'.
+            - 'despedida': Para despedidas como 'tchau', 'até mais'.
+            - 'frete': Para perguntas sobre o custo ou tempo de entrega.
+            - 'menu': APENAS quando o usuário pedir explicitamente o 'cardápio' ou 'menu'.
+            - 'falar_com_humano': Se o usuário pedir para falar com uma pessoa.
+            - 'outro': Para qualquer outra coisa."""
         )
+        )
+        
 
     async def _decide_agent_to_call(self, message: str, order_state: OrderState, client_latitude: Optional[float], client_longitude: Optional[float]) -> str:
         # Se a mensagem estiver vazia após a análise do arquivo (ou desde o início), não há o que fazer.
@@ -310,10 +353,10 @@ class OrchestratorAgent:
     
 
     async def _handle_file_understanding(self, file_content: bytes, mimetype: str, final_response: AIResponse) -> Optional[str]:
-        """
+        '''
         Processa um arquivo (áudio, imagem, etc.), retorna o texto transcrito se houver,
         ou preenche a resposta final com uma mensagem de erro/status e retorna None.
-        """
+        '''
         try:
             if not file_content or len(file_content) == 0:
                 logger.warning("Arquivo vazio - pulando análise")
@@ -378,22 +421,86 @@ class OrchestratorAgent:
             memory=self.memory,
             api_key=self.gemini_api_key_2,
             personality_prompt=personality_prompt,
-            session_id=self.composite_session_id
+            session_id=self.composite_session_id,
+            response_model=GeneralResponseOutput,
+            exponential_backoff=True,
+            retries=3,
+            enable_user_memories=True,
+            enable_session_summaries=True
         )
 
         prompt_com_regras = (
-            f"""**Contexto e Regras OBRIGATÓRIAS:**
+            f'''**Contexto e Regras OBRIGATÓRIAS:**
 1. Você é o atendente da loja '{nome_loja}'. Use essa informação para se apresentar e responder.
-2. Para responder a perguntas sobre produtos, use as ferramentas disponíveis para encontrar a informação solicitada.
+2. Para responder a perguntas sobre produtos, use a ferramenta `product_query_tool`.
+   - Para o produto 'mais caro', use `query_type='mais_caro'`.
+   - Para o 'mais barato', use `query_type='mais_barato'`.
+   - Para 'buscar por nome', use `query_type='buscar_por_nome'` e o `product_name`.
+   - Para 'listar todos', use `query_type='listar_todos'`.
 3. NUNCA peça o ID da loja ao usuário.
 
 **Pergunta do Usuário:**
-{message}"""
+{message}'''
         )
 
         logger.debug(f"Enviando prompt com regras para o Agente Geral: {prompt_com_regras}")
 
         general_output = await general_response_agent.arun(prompt_com_regras, user_id=self.composite_session_id)
-        final_response.response_text = general_output.content.text_response
+
+        if general_output and general_output.content and hasattr(general_output.content, 'text_response'):
+            final_response.response_text = general_output.content.text_response
+        else:
+            logger.error(f"O Agente Geral não retornou uma resposta válida. Saída recebida: {general_output}")
+            final_response.response_text = "Desculpe, não consegui processar sua solicitação no momento. Tente novamente."
+
+    async def _route_by_context(self, step_input: StepInput) -> List[Step]:
+        """Decide qual Step executar com base no contexto."""
+        additional_data = step_input.additional_data or {}
+        message = step_input.message
+        order_state = additional_data.get("order_state")
+        client_latitude = additional_data.get("client_latitude")
+        client_longitude = additional_data.get("client_longitude")
+
+        agent_name = await self._decide_agent_to_call(
+            message, order_state, client_latitude, client_longitude
+        )
+
+        logger.info(f"Router decidiu chamar: '{agent_name}'")
+
+        if agent_name == "human_handoff_agent":
+            return [self.human_handoff_step]
+        if agent_name == "menu_agent":
+            return [self.menu_step]
+        if agent_name == "freight_agent":
+            return [self.freight_step]
+        if agent_name == "order_taking_agent":
+            return [self.order_taking_step]
+        
+        return [self.general_response_step]
+
+    async def _handle_human_handoff_wrapper(self, step_input: StepInput) -> StepOutput:
+        final_response = step_input.additional_data.get("final_response")
+        self._handle_human_handoff(final_response)
+        return StepOutput(content=final_response)
+
+    async def _handle_menu_request_wrapper(self, step_input: StepInput) -> StepOutput:
+        final_response = step_input.additional_data.get("final_response")
+        self._handle_menu_request(final_response)
+        return StepOutput(content=final_response)
+
+    async def _handle_general_response_wrapper(self, step_input: StepInput) -> StepOutput:
+        final_response = step_input.additional_data.get("final_response")
+        message = step_input.message
+        personality_prompt = step_input.additional_data.get("personality_prompt")
+        await self._handle_general_response(message, personality_prompt, final_response)
+        return StepOutput(content=final_response)
+
+    async def _handle_order_taking_wrapper(self, step_input: StepInput) -> StepOutput:
+        final_response = step_input.additional_data.get("final_response")
+        db = step_input.additional_data.get("db")
+        order_state = step_input.additional_data.get("order_state")
+        message = step_input.message
+        await self._handle_order_taking(db, order_state, message, final_response)
+        return StepOutput(content=final_response)
 
         
