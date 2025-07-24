@@ -22,12 +22,16 @@ LOGGING_CONFIG = {
             "()": CustomJsonFormatter,
             "format": "%(timestamp)s %(level)s %(name)s %(message)s %(pathname)s %(lineno)d",
         },
+        "standard": {
+            "format": "%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s (%(filename)s:%(lineno)d)",
+            "datefmt": "%Y-%m-%d %H:%M:%S"
+        }
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "level": LOG_LEVEL,
-            "formatter": "json",
+            "formatter": "standard",
             "stream": "ext://sys.stdout",
         },
     },
@@ -35,6 +39,9 @@ LOGGING_CONFIG = {
         "uvicorn": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
         "uvicorn.error": {"level": LOG_LEVEL, "propagate": True},
         "uvicorn.access": {"handlers": ["console"], "level": LOG_LEVEL, "propagate": False},
-        "": {"handlers": ["console"], "level": LOG_LEVEL}, # Root logger
+        "httpcore": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "httpx": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "google_genai.models": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "": {"handlers": ["console"], "level": "DEBUG"}, # Root logger
     },
 }
