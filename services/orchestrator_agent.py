@@ -48,6 +48,15 @@ class OrchestratorAgent:
         self.user_id = user_id
         self.composite_session_id = f"{user_id}_{tenant_id}"
 
+        # Definir IDs dos modelos de IA
+        self.ORCHESTRATOR_MODEL_ID = "models/gemini-2.0-flash-lite"
+        self.GENERAL_AGENT_MODEL_ID = "models/gemini-2.0-flash"
+        self.ORDER_TAKING_AGENT_MODEL_ID = "models/gemini-2.0-flash"
+        self.HUMAN_HANDOFF_MODEL_ID = "models/gemini-2.0-flash-lite"
+        self.MENU_AGENT_MODEL_ID = "models/gemini-2.0-flash-lite"
+        self.FREIGHT_AGENT_MODEL_ID = "models/gemini-2.0-flash"
+        self.FILE_UNDERSTANDING_MODEL_ID = "models/gemini-2.0-flash"
+
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         if not self.gemini_api_key:
             raise ValueError("A variável de ambiente GEMINI_API_KEY não foi definida.")
@@ -61,7 +70,7 @@ class OrchestratorAgent:
         self.vector_db_manager = VectorDBManager(collection_name=self.tenant_id)
 
         self.orchestrator = Agent(
-            model=Gemini(id="gemini-2.0-flash", api_key=self.gemini_api_key),
+            model=Gemini(id=self.ORCHESTRATOR_MODEL_ID, api_key=self.gemini_api_key),
             description="Você é um agente orquestrador que delega tarefas a agentes especializados...",
             storage=PostgresStorage(table_name="orchestrator_sessions", db_url=DATABASE_URL),
             add_history_to_messages=True,
@@ -70,11 +79,11 @@ class OrchestratorAgent:
             response_model=OrchestratorDecision,
         )
 
-        self.human_handoff_agent = get_human_handoff_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key)
-        self.menu_agent = get_menu_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key)
-        self.freight_agent = get_freight_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2)
-        self.file_understanding_agent = get_file_understanding_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2)
-        self.order_taking_agent = get_order_taking_agent(model_id="gemini-2.0-flash", api_key=self.gemini_api_key_2, memory=self.memory)
+        self.human_handoff_agent = get_human_handoff_agent(model_id=self.HUMAN_HANDOFF_MODEL_ID, api_key=self.gemini_api_key)
+        self.menu_agent = get_menu_agent(model_id=self.MENU_AGENT_MODEL_ID, api_key=self.gemini_api_key)
+        self.freight_agent = get_freight_agent(model_id=self.FREIGHT_AGENT_MODEL_ID, api_key=self.gemini_api_key_2)
+        self.file_understanding_agent = get_file_understanding_agent(model_id=self.FILE_UNDERSTANDING_MODEL_ID, api_key=self.gemini_api_key_2)
+        self.order_taking_agent = get_order_taking_agent(model_id=self.ORDER_TAKING_AGENT_MODEL_ID, api_key=self.gemini_api_key_2, memory=self.memory)
 
         # Etapa 1: Criar os Steps
         self.human_handoff_step = Step(
@@ -169,10 +178,18 @@ class OrchestratorAgent:
 
             final_response = workflow_response.content
 
-            # Lógica de Saudação: Adiciona apenas na primeira interação do dia.
+            # Lógica de Saudação: Adiciona apenas na primeira interação do dia e se a resposta não contiver saudação.
             now = datetime.now()
             last_interaction = USER_LAST_INTERACTION.get(self.composite_session_id)
-            if last_interaction is None or last_interaction.date() < now.date():
+            
+            # Verifica se é a primeira interação do dia
+            is_first_interaction_today = last_interaction is None or last_interaction.date() < now.date()
+
+            # Verifica se a resposta do agente já contém uma saudação
+            response_text_lower = final_response.response_text.lower()
+            contains_greeting = any(greeting_word in response_text_lower for greeting_word in ["olá", "bem-vindo", "bom dia", "boa tarde", "boa noite"])
+
+            if is_first_interaction_today and not contains_greeting:
                 tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, self.tenant_id)
                 nome_loja = tenant.nome_loja if tenant else self.tenant_id
                 greeting = f"Olá! Bem-vindo(a) ao Atendente Virtual da {nome_loja}. "
@@ -251,14 +268,14 @@ class OrchestratorAgent:
 
     def _get_simple_intent_agent(self):
         return Agent(
-            model=Gemini(id="gemini-2.0-flash", api_key=self.gemini_api_key),
+            model=Gemini(id="models/gemini-2.0-flash-lite", api_key=self.gemini_api_key),
             description="Analise a resposta do usuário e retorne a intenção principal em uma palavra: 'entrega', 'retirada', 'sim', 'não', ou 'outro'."
         )
 
     def _get_intent_agent(self):
         # Este agente é super simples e focado em apenas uma tarefa.
         return Agent(
-            model=Gemini(id="gemini-2.0-flash", api_key=self.gemini_api_key),
+            model=Gemini(id="models/gemini-2.0-flash-lite", api_key=self.gemini_api_key),
             description=(
             """Sua única tarefa é classificar a intenção do usuário. Responda com APENAS UMA das seguintes palavras:
             - 'pergunta_produto': Para perguntas sobre produtos, incluindo pedidos para listar, procurar, ou saber qual é o mais caro/barato.
@@ -416,7 +433,7 @@ class OrchestratorAgent:
             db.close()
 
         general_response_agent = get_general_response_agent(
-            model_id="gemini-2.0-flash",
+            model_id=self.GENERAL_AGENT_MODEL_ID,
             vector_db_manager=self.vector_db_manager,
             memory=self.memory,
             api_key=self.gemini_api_key_2,
@@ -429,23 +446,13 @@ class OrchestratorAgent:
             enable_session_summaries=True
         )
 
-        prompt_com_regras = (
-            f'''**Contexto e Regras OBRIGATÓRIAS:**
-1. Você é o atendente da loja '{nome_loja}'. Use essa informação para se apresentar e responder.
-2. Para responder a perguntas sobre produtos, use a ferramenta `product_query_tool`.
-   - Para o produto 'mais caro', use `query_type='mais_caro'`.
-   - Para o 'mais barato', use `query_type='mais_barato'`.
-   - Para 'buscar por nome', use `query_type='buscar_por_nome'` e o `product_name`.
-   - Para 'listar todos', use `query_type='listar_todos'`.
-3. NUNCA peça o ID da loja ao usuário.
-
-**Pergunta do Usuário:**
-{message}'''
-        )
+        prompt_com_regras = message
 
         logger.debug(f"Enviando prompt com regras para o Agente Geral: {prompt_com_regras}")
 
         general_output = await general_response_agent.arun(prompt_com_regras, user_id=self.composite_session_id)
+
+        logger.debug(f"Resposta bruta do Agente Geral: {general_output}")
 
         if general_output and general_output.content and hasattr(general_output.content, 'text_response'):
             final_response.response_text = general_output.content.text_response
