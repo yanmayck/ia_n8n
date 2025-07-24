@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from core.database import Base
@@ -8,9 +8,9 @@ class Tenant(Base):
     __tablename__ = "tenants"
 
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(String, unique=True, index=True, nullable=False)  # Instância
-    nome_loja = Column(String, nullable=False)  # Nome da loja para identificação
-    config_ai = Column(Text, nullable=False)  # Descrição da empresa
+    tenant_id = Column(String, unique=True, index=True, nullable=False)
+    nome_loja = Column(String, nullable=False)
+    config_ai = Column(Text, nullable=False)
     evolution_api_key = Column(String)
     is_active = Column(Boolean, default=True)
     id_pronpt = Column(String, ForeignKey("personalities.name"))
@@ -18,10 +18,12 @@ class Tenant(Base):
     cep = Column(String)
     latitude = Column(String)
     longitude = Column(String)
-    url = Column(String)  # URL da instância
-    menu_image_url = Column(String, nullable=True) # Nova coluna para a URL da imagem do cardápio
+    url = Column(String)
+    menu_image_url = Column(String, nullable=True)
+    freight_config = Column(Text, nullable=True)
 
     personality = relationship("Personality", foreign_keys=[id_pronpt])
+    orders = relationship("Order", back_populates="tenant")
 
 class Personality(Base):
     __tablename__ = "personalities"
@@ -43,10 +45,11 @@ class Interaction(Base):
     message_from_user = Column(Text)
     ai_response = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    
     personality_id = Column(Integer, ForeignKey("personalities.id"))
-    personality = relationship("Personality", back_populates="interactions")
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"), nullable=False) # Adicionado tenant_id
 
+    personality = relationship("Personality", back_populates="interactions")
 
 class Product(Base):
     __tablename__ = "products"
@@ -57,12 +60,38 @@ class Product(Base):
     retrieval_key = Column(String, unique=True, index=True, nullable=False)
     tenant_id = Column(String, ForeignKey("tenants.tenant_id"))
     
-    # Novas colunas para os dados do Excel
-    publico_alvo = Column(Text, nullable=True) # Coluna para 'Público-Alvo'
-    principais_funcionalidades = Column(Text, nullable=True) # Coluna para 'Principais Funcionalidades'
-    limitacoes_observacoes = Column(Text, nullable=True) # Coluna para 'Limitações / Observações'
-    produto_promocao = Column(Boolean, nullable=True) # Coluna para 'produto_promocao'
-    preco_promotions = Column(String, nullable=True) # Coluna para 'preco_promotions'
-    combo_product = Column(String, nullable=True) # Coluna para 'combo_product'
+    publico_alvo = Column(Text, nullable=True)
+    principais_funcionalidades = Column(Text, nullable=True)
+    limitacoes_observacoes = Column(Text, nullable=True)
+    produto_promocao = Column(Boolean, nullable=True)
+    preco_promotions = Column(String, nullable=True)
+    combo_product = Column(String, nullable=True)
+    tempo_preparo_minutos = Column(Integer, nullable=True)
 
     tenant = relationship("Tenant")
+
+class UserAddress(Base):
+    __tablename__ = "user_addresses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_phone = Column(String, index=True, nullable=False)
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"), nullable=False)
+    address_text = Column(Text, nullable=False)
+    latitude = Column(String, nullable=True)
+    longitude = Column(String, nullable=True)
+    last_used_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_phone = Column(String, index=True, nullable=False)
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"), nullable=False)
+    items = Column(JSON, nullable=False)
+    total_price = Column(String, nullable=False)
+    delivery_method = Column(String, nullable=False) # "entrega" ou "retirada"
+    address = Column(Text, nullable=True) # Nullable para caso de retirada
+    freight_details = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    tenant = relationship("Tenant", back_populates="orders")

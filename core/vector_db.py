@@ -1,56 +1,57 @@
 import os
 from typing import List, Dict
-
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_chroma import Chroma # Importar Chroma da nova biblioteca
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
+import logging
 
-# Carrega as variáveis de ambiente
+from agno.vectordb.pgvector import PgVector, SearchType
+from agno.embedder.google import GeminiEmbedder
+
 load_dotenv()
-
-# Configuração do embedding model
-# Certifique-se de que a GEMINI_API_KEY está configurada no seu .env
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY não está configurada no ambiente.")
-
-embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GEMINI_API_KEY)
-
-# Diretório para persistir o ChromaDB
-CHROMA_DB_DIR = "./chroma_db"
+logger = logging.getLogger(__name__)
 
 class VectorDBManager:
     def __init__(self, collection_name: str):
         self.collection_name = collection_name
-        self.chroma_client = Chroma(
-            collection_name=self.collection_name,
-            embedding_function=embeddings_model,
-            persist_directory=CHROMA_DB_DIR
+        
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+        if not DATABASE_URL or not GEMINI_API_KEY:
+            raise ValueError("Variáveis de ambiente DATABASE_URL e GEMINI_API_KEY devem ser configuradas.")
+
+        # O embedder é usado pelo PgVector para criar os embeddings
+        embedder = GeminiEmbedder(api_key=GEMINI_API_KEY)
+        
+        # A instância do PgVector é a nossa base de conhecimento.
+        # Ela será passada diretamente para o Agente.
+        self.knowledge_base = PgVector(
+            db_url=DATABASE_URL,
+            table_name=self.collection_name,
+            embedder=embedder,
+            search_type=SearchType.hybrid,
         )
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, # Tamanho dos pedaços de texto
-            chunk_overlap=200 # Sobreposição entre os pedaços
-        )
+        logger.info(f"PgVector inicializado com tabela: {self.collection_name}")
 
     def add_documents(self, documents: List[str], metadatas: List[Dict] = None):
-        # Divide os documentos em chunks
-        texts = self.text_splitter.create_documents(documents, metadatas=metadatas)
-        self.chroma_client.add_documents(texts)
-        self.chroma_client.persist()
+        if not documents:
+            return
+        
+        if metadatas is None:
+            metadatas = [{}] * len(documents)
+        
+        # O método add do PgVector espera uma lista de tuplas (texto, metadados)
+        data_to_add = list(zip(documents, metadatas))
+        self.knowledge_base.add(data_to_add)
+        logger.info(f"{len(data_to_add)} documentos adicionados à tabela {self.collection_name}.")
 
     def search_documents(self, query: str, k: int = 3) -> List[Dict]:
-        results = self.chroma_client.similarity_search_with_score(query, k=k)
+        results = self.knowledge_base.query(query=query, top_k=k)
         
         formatted_results = []
-        for doc, score in results:
+        for doc in results:
             formatted_results.append({
-                "page_content": doc.page_content,
+                "page_content": doc.text,
                 "metadata": doc.metadata,
-                "score": score
+                "score": doc.score if hasattr(doc, 'score') else None
             })
         return formatted_results
-
-    def delete_collection(self):
-        """Deleta a coleção inteira do ChromaDB."""
-        self.chroma_client.delete_collection()

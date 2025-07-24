@@ -77,6 +77,15 @@
                         <div id="current_menu_image_preview" style="margin-top: 10px; margin-bottom: 10px;">
                             <!-- A imagem do cardápio atual será carregada aqui para edição -->
                         </div>
+
+                        <label for="freight_config_create">Configuração de Frete (JSON)</label>
+                        <input type="text" id="freight_config_create" name="freight_config" placeholder='Ex: {"type": "FIXED", "price": 10.0}'>
+                        <div style="margin-top: 10px; padding: 10px; background-color: #3a3a5a; border-radius: 5px; font-size: 0.9em; line-height: 1.4;">
+                            <p style="margin: 0 0 5px 0;"><strong>Formatos Suportados:</strong></p>
+                            <p style="margin: 2px 0;"><strong>Fixo:</strong> <code>{"type": "FIXED", "price": 10.00}</code></p>
+                            <p style="margin: 2px 0;"><strong>Por KM:</strong> <code>{"type": "PER_KM", "price_per_km": 2.50}</code></p>
+                            <p style="margin: 2px 0;"><strong>Por Faixa:</strong> <code>{"type": "TIERED", "tiers": [{"up_to_km": 3, "price": 5.00}, {"up_to_km": 999, "price": 10.00}]}</code></p>
+                        </div>
                         
                         <button type="submit">Salvar Cliente</button>
                         <button type="button" id="cancel-edit" style="display: none; background: #e74c3c;">Cancelar Edição</button>

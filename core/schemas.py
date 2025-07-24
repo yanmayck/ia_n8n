@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # =======================================================================
@@ -50,6 +50,7 @@ class TenantUpdateSchema(BaseModel):
     url: Optional[str] = None
     is_active: Optional[bool] = None
     menu_image_url: Optional[str] = None # Adicionar no schema de atualização, será a URL após upload
+    freight_config: Optional[str] = None # Nova coluna para a configuração de frete
 
 class TenantConfigRequest(BaseModel):
     instancia: str
@@ -93,13 +94,17 @@ class Personality(PersonalityBase):
 # Esquemas para o Webhook da IA (Entrada e Saída)
 # =======================================================================
 
+from typing import Union # Adicionar esta importação
+
 class AIWebhookRequest(BaseModel):
     message_user: Optional[str] = None
     message_base64: Optional[str] = None
     mimetype: Optional[str] = None
-    personality_name: str
+    tenant_id: str
     user_phone: str
     whatsapp_message_id: str
+    latitude: Optional[Union[float, str]] = None # Permite float ou string
+    longitude: Optional[Union[float, str]] = None # Permite float ou string
 
 class FileDetails(BaseModel):
     retrieval_key: str
@@ -132,10 +137,39 @@ class AIProcessingResult(BaseModel):
     file_details: Optional[FileDetails] = None # Adicionado para retornar detalhes de arquivo da IA
     # Outros dados que a IA pode retornar, se necessário
 
-class AIWebhookResponse(BaseModel):
-    response_parts: List[AIWebhookResponsePart]
-    # As flags human_handoff e send_menu foram movidas para AIWebhookResponsePart
+class HumanHandoffOutput(BaseModel):
+    should_handoff: bool = Field(description="True if the conversation should be handed off to a human, false otherwise.")
 
+class MenuOutput(BaseModel):
+    should_send_menu: bool = Field(description="True if the menu should be sent to the user, false otherwise.")
+
+class FreightCalculationOutput(BaseModel):
+    distance_km: float
+    duration_minutes: float
+    cost: Optional[float] = None
+
+class FileUnderstandingOutput(BaseModel):
+    # This will be the output of the file understanding agent
+    summary: str
+    file_type: str
+
+class GeneralResponseOutput(BaseModel):
+    # This will be the output of the general response agent
+    text_response: str
+
+class OrderItem(BaseModel):
+    product_name: str = Field(description="O nome exato do produto como está no cardápio.")
+    quantity: int = Field(description="A quantidade que o usuário deseja pedir.")
+
+class OrderTakingOutput(BaseModel):
+    items: List[OrderItem] = Field(description="Uma lista de itens que o usuário pediu.")
+    is_final_order: bool = Field(description="True se o usuário indicou que terminou de pedir (ex: 'só isso', 'fecha a conta').")
+    address: Optional[str] = Field(description="O endereço de entrega, se mencionado pelo usuário.")
+
+class OrderState(BaseModel):
+    items: List[OrderItem] = []
+    address: Optional[str] = None
+    status: str = "open" # Estados possíveis: open, pending_confirmation, confirmed, cancelled
 
 # =======================================================================
 # Esquemas para Produtos
@@ -166,6 +200,7 @@ class InteractionBase(BaseModel):
     message_from_user: Optional[str] = None
     ai_response: Optional[str] = None
     personality_id: int
+    tenant_id: str # Adicionado tenant_id
 
 class InteractionCreate(InteractionBase):
     pass
@@ -178,9 +213,74 @@ class Interaction(InteractionBase):
         from_attributes = True
 
 # =======================================================================
+# Esquemas para Endereços de Usuários
+# =======================================================================
+
+class UserAddressBase(BaseModel):
+    user_phone: str
+    tenant_id: str
+    address_text: str
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
+
+class UserAddressCreate(UserAddressBase):
+    pass
+
+class UserAddress(UserAddressBase):
+    id: int
+    last_used_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# =======================================================================
+# Esquemas para Pedidos
+# =======================================================================
+
+class OrderBase(BaseModel):
+    user_phone: str
+    tenant_id: str
+    items: List[Dict[str, Any]]
+    total_price: str
+    delivery_method: str
+    address: Optional[str] = None
+    freight_details: Optional[Dict[str, Any]] = None
+
+class OrderCreate(OrderBase):
+    pass
+
+class Order(OrderBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# =======================================================================
 # Esquemas para a Resposta Estruturada da IA
 # =======================================================================
-class AIResponse(BaseModel):
+class FreightDetails(BaseModel):
+    distance_km: float
+    origin_address: Optional[str] = None
+    origin_latitude: Optional[float] = None
+    origin_longitude: Optional[float] = None
+    destination_latitude: float
+    destination_longitude: float
+    cost: Optional[float] = None # If freight_calculator returns cost
+
+class FileSummary(BaseModel):
+    summary_text: str
+    file_type: str
+    # Add more fields as needed, e.g., extracted_text, detected_objects
+
+class AIResponse(BaseModel): # This will be the orchestrator's output
     response_text: str = Field(..., description="The final text response to send to the user.")
     human_handoff: bool = Field(description="Set to true ONLY if the user explicitly asks to speak to a human or is very frustrated.")
     send_menu: bool = Field(description="Set to true ONLY if the user asks for the menu or expresses clear intent to order.")
+    freight_details: Optional[FreightDetails] = None
+    file_summary: Optional[FileSummary] = None
+    # Add other structured outputs as expert agents are added
+
+class OrchestratorDecision(BaseModel):
+    agent_to_call: str = Field(..., description="The name of the specialized agent to call.")
+    agent_input: Optional[str] = Field(description="A JSON string of input parameters for the specialized agent.")

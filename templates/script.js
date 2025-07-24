@@ -272,6 +272,12 @@ document.getElementById('create-tenant-form').addEventListener('submit', async (
     formData.delete('loja_txt_upload'); // Remove o novo campo de UploadFile
     formData.delete('loja_txt_content'); // Remove o novo campo de textarea
 
+    // Adicionar freight_config ao formData
+    const freightConfigElement = document.getElementById('freight_config_create');
+    if (freightConfigElement && freightConfigElement.value) {
+        formData.append('freight_config', freightConfigElement.value);
+    }
+
     if (lojaTxtContentElement.style.display === 'block') {
         // Se a textarea está visível, use seu conteúdo
         formData.append('loja_txt', new Blob([lojaTxtContentElement.value], { type: 'text/plain' }), 'loja_info.txt');

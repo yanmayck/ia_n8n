@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     pigz \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Instala dependências do sistema, como o ffmpeg para processamento de vídeo.
@@ -33,4 +34,4 @@ EXPOSE 8000
 # Comando para iniciar sua aplicação FastAPI
 # Lembre-se que 'api.main:app' significa o arquivo 'main.py' dentro da pasta 'api',
 # e 'app' é a instância do FastAPI.
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"] 
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"] 
