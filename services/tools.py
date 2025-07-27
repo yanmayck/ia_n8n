@@ -2,28 +2,97 @@ import os
 import logging
 import httpx
 import json
+import re
 from agno.tools import tool
+from agno.tools.sql import SQLTools # Importação corrigida
 from duckduckgo_search import DDGS
 from starlette.concurrency import run_in_threadpool
-from typing import Optional
+from typing import Optional, List
+import asyncio
+from agno.agent import Agent
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import text
 
-from core.database import SessionLocal
-from crud import tenant_crud, product_crud # Importar product_crud
-from core import models # Importar models para acessar o modelo Product
+from core.database import SessionLocal, DATABASE_URL
+from crud import tenant_crud
+from core import models
 
 logger = logging.getLogger(__name__)
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
+
+class TenantSafeSQLTools(SQLTools):
+    def __init__(self, db_url: str, tenant_id: str):
+        super().__init__(db_url=db_url)
+        self.tenant_id = tenant_id
+        logger.info(f"TenantSafeSQLTools inicializada para o tenant: {self.tenant_id}")
+
+    def _add_tenant_filter(self, sql_query: str) -> str:
+        # Adiciona um filtro de tenant_id a todas as consultas SELECT
+        # Esta é uma medida de segurança para garantir o isolamento dos dados.
+        if 'select' in sql_query.lower():
+            if 'where' in sql_query.lower():
+                # Adiciona a condição a uma cláusula WHERE existente
+                sql_query = re.sub(r'(where\s+)', f"WHERE tenant_id = '{self.tenant_id}' AND ", sql_query, flags=re.IGNORECASE)
+            else:
+                # Adiciona uma nova cláusula WHERE
+                sql_query = re.sub(r'(from\s+[\w\".]+)', f"\1 WHERE tenant_id = '{self.tenant_id}'", sql_query, flags=re.IGNORECASE)
+        logger.info(f"Consulta SQL com filtro de tenant: {sql_query}")
+        return sql_query
+
+    def run_sql_query(self, query: str) -> str:
+        safe_query = self._add_tenant_filter(query)
+        return super().run_sql_query(safe_query)
+
+@tool
+def get_sql_query_tool(agent: Agent) -> List[TenantSafeSQLTools]:
+    """Retorna uma lista de ferramentas SQL seguras para o tenant."""
+    tenant_id = agent.session_state.get("tenant_id")
+    if not tenant_id:
+        raise ValueError("O tenant_id não foi encontrado no estado da sessão do agente.")
+    
+    return [TenantSafeSQLTools(db_url=DATABASE_URL, tenant_id=tenant_id)]
+
+@tool
+async def get_contextual_suggestions_tool(product_id: int) -> str:
+    """
+    Use esta ferramenta para obter sugestões de opcionais e produtos adicionais
+    relevantes para um produto específico que o cliente acabou de pedir.
+    Retorna uma lista de dicionários com 'nome' e 'preco' das sugestões.
+    """
+    db = SessionLocal()
+    try:
+        rules_engine = RulesEngine(db)
+        suggestions = await run_in_threadpool(rules_engine.get_contextual_suggestions, product_id)
+        return json.dumps(suggestions)
+    except Exception as e:
+        logger.error(f"Erro na ferramenta get_contextual_suggestions_tool: {e}", exc_info=True)
+        return f"Erro ao buscar sugestões: {str(e)}"
+    finally:
+        db.close()
+
+@tool
+async def get_applicable_promotions_tool(tenant_id: str, order_state_json: str) -> str:
+    """
+    Use esta ferramenta para obter uma lista de promoções aplicáveis
+    com base no ID do tenant e no estado atual do pedido (JSON string).
+    Retorna uma lista de dicionários com detalhes das promoções.
+    """
+    db = SessionLocal()
+    try:
+        rules_engine = RulesEngine(db)
+        order_state = json.loads(order_state_json) # Converte a string JSON de volta para dict
+        promotions = await run_in_threadpool(rules_engine.get_applicable_promotions, tenant_id, order_state)
+        return json.dumps(promotions)
+    except Exception as e:
+        logger.error(f"Erro na ferramenta get_applicable_promotions_tool: {e}", exc_info=True)
+        return f"Erro ao buscar promoções aplicáveis: {str(e)}"
+    finally:
+        db.close()
 
 @tool
 async def freight_calculator(latitude_cliente: float, longitude_cliente: float, tenant_id: str) -> str:
     """
     Calcula o frete da loja até a localização do cliente.
-    Primeiro, obtém a distância via Google Maps.
-    Depois, calcula o custo com base na configuração de frete do tenant (JSON).
-    Formatos de JSON suportados:
-    - Fixo: {"type": "FIXED", "price": 10.00}
-    - Por KM: {"type": "PER_KM", "price_per_km": 2.50}
-    - Por Faixa: {"type": "TIERED", "tiers": [{"up_to_km": 3, "price": 5.00}, {"up_to_km": 999, "price": 10.00}]}
     """
     db = SessionLocal()
     try:
@@ -36,7 +105,6 @@ async def freight_calculator(latitude_cliente: float, longitude_cliente: float, 
         if not tenant.latitude or not tenant.longitude:
             return "Erro: As coordenadas da loja não estão configuradas."
 
-        # 1. Obter distância da Google Maps API
         url = "https://maps.googleapis.com/maps/api/distancematrix/json"
         params = {
             "origins": f"{tenant.latitude},{tenant.longitude}",
@@ -57,7 +125,6 @@ async def freight_calculator(latitude_cliente: float, longitude_cliente: float, 
         duracao_segundos = data["rows"][0]["elements"][0]["duration"]["value"]
         duracao_minutos = duracao_segundos / 60
         
-        # 2. Calcular custo com base na configuração de frete (freight_config)
         freight_cost = None
         if tenant.freight_config:
             try:
@@ -79,10 +146,8 @@ async def freight_calculator(latitude_cliente: float, longitude_cliente: float, 
                 
             except (json.JSONDecodeError, KeyError, TypeError) as e:
                 logger.error(f"Erro ao processar freight_config para tenant {tenant_id}: {e}")
-                # Se a configuração for inválida, não calcula o custo, mas ainda retorna a distância.
                 pass
 
-        # 3. Construir a resposta final
         return {
             "distance_km": distancia_km,
             "duration_minutes": duracao_minutos,
@@ -92,74 +157,6 @@ async def freight_calculator(latitude_cliente: float, longitude_cliente: float, 
     except Exception as e:
         logger.error(f"Erro na ferramenta de cálculo de frete: {e}", exc_info=True)
         return "Ocorreu um erro interno ao tentar calcular o frete."
-    finally:
-        db.close()
-
-@tool
-async def product_query_tool(tenant_id: str, query_type: str, product_name: Optional[str] = None) -> str:
-    """
-    Consulta informações sobre produtos para um tenant específico.
-    query_type: 'mais_caro', 'mais_barato', 'buscar_por_nome', 'listar_todos'.
-    product_name (opcional): O nome do produto para buscar_por_nome.
-    """
-    db = SessionLocal()
-    try:
-        products = await run_in_threadpool(product_crud.get_products_by_tenant_id, db, tenant_id=tenant_id)
-        if not products:
-            return "Nenhum produto encontrado para esta loja."
-
-        if query_type == "mais_caro":
-            # Filtrar produtos que têm preço válido e convertê-lo para float
-            valid_products = []
-            for p in products:
-                try:
-                    p_price = float(p.price)
-                    valid_products.append((p, p_price))
-                except ValueError:
-                    logger.warning(f"Produto {p.name} com preço inválido: {p.price}")
-                    continue
-            
-            if not valid_products:
-                return "Não foi possível determinar o produto mais caro devido a preços inválidos."
-
-            most_expensive = max(valid_products, key=lambda item: item[1])[0]
-            return f"O produto mais caro é '{most_expensive.name}' por R$ {float(most_expensive.price):.2f}."
-
-        elif query_type == "mais_barato":
-            valid_products = []
-            for p in products:
-                try:
-                    p_price = float(p.price)
-                    valid_products.append((p, p_price))
-                except ValueError:
-                    logger.warning(f"Produto {p.name} com preço inválido: {p.price}")
-                    continue
-            
-            if not valid_products:
-                return "Não foi possível determinar o produto mais barato devido a preços inválidos."
-
-            most_cheapest = min(valid_products, key=lambda item: item[1])[0]
-            return f"O produto mais barato é '{most_cheapest.name}' por R$ {float(most_cheapest.price):.2f}."
-
-        elif query_type == "buscar_por_nome":
-            if not product_name:
-                return "Por favor, forneça o nome do produto para buscar."
-            found_product = next((p for p in products if p.name.lower() == product_name.lower()), None)
-            if found_product:
-                return f"Detalhes do produto '{found_product.name}': Preço R$ {float(found_product.price):.2f}. Descrição: {found_product.principais_funcionalidades or 'N/A'}. Público-alvo: {found_product.publico_alvo or 'N/A'}."
-            return f"Produto '{product_name}' não encontrado."
-
-        elif query_type == "listar_todos":
-            if not products:
-                return "Nenhum produto cadastrado."
-            product_list = [f"{p.name} (R$ {float(p.price):.2f})" for p in products]
-            return "Nossos produtos são: " + ", ".join(product_list) + "."
-
-        return "Tipo de consulta de produto não reconhecido."
-
-    except Exception as e:
-        logger.error(f"Erro na ferramenta de consulta de produtos: {e}", exc_info=True)
-        return "Ocorreu um erro interno ao consultar os produtos."
     finally:
         db.close()
 

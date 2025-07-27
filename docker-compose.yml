@@ -7,7 +7,10 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+    user: "1000:1000"
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL} 
+      - DATABASE_URL=${DATABASE_URL}
+    dns:
+      - 8.8.8.8 

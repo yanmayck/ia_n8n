@@ -11,22 +11,56 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY")
 
+import os
+import logging
+from fastapi import HTTPException, UploadFile
+import httpx
+import uuid
+import mimetypes
+from PIL import Image
+import io
+
+logger = logging.getLogger(__name__)
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY")
+
+async def optimize_image(file_content: bytes, max_size: tuple = (1600, 1600), quality: int = 85) -> bytes:
+    """Otimiza uma imagem redimensionando e comprimindo."""
+    try:
+        img = Image.open(io.BytesIO(file_content))
+        img.thumbnail(max_size)
+        
+        # Converte para RGB para salvar como JPEG
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        buffer = io.BytesIO()
+        img.save(buffer, format='JPEG', quality=quality, optimize=True)
+        return buffer.getvalue()
+    except Exception as e:
+        logger.error(f"Erro ao otimizar imagem: {e}")
+        return file_content # Retorna o original em caso de erro
+
 async def upload_image_to_supabase(file: UploadFile) -> str:
     if not all([SUPABASE_URL, SUPABASE_KEY, SERVICE_ROLE_KEY]):
         raise HTTPException(status_code=500, detail="Configuração do Supabase incompleta no servidor.")
 
-    file_extension = mimetypes.guess_extension(file.content_type)
-    file_name = f"{uuid.uuid4()}{file_extension}"
+    file_content = await file.read()
+    optimized_content = await optimize_image(file_content)
+
+    file_name = f"{uuid.uuid4()}.jpg" # Salva como JPG otimizado
     bucket_name = "menus"
     upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{file_name}"
 
     headers = {
         "Authorization": f"Bearer {SERVICE_ROLE_KEY}",
-        "Content-Type": file.content_type
+        "Content-Type": "image/jpeg"
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(upload_url, content=await file.read(), headers=headers)
+        response = await client.post(upload_url, content=optimized_content, headers=headers)
 
     if response.status_code != 200:
         logger.error(f"Erro no upload para o Supabase: {response.text}")

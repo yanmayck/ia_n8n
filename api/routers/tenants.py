@@ -8,7 +8,7 @@ import io
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
-from crud import tenant_crud, product_crud
+from crud import tenant_crud, product_crud, opcional_crud, promocao_crud, menu_image_crud
 from core import models, schemas
 from services import file_handler, agent_manager
 from api.dependencies import get_db, get_current_user
@@ -39,19 +39,11 @@ async def create_tenant(
     latitude: float = Form(...),
     longitude: float = Form(...),
     loja_txt: UploadFile = File(...),
-    produtos_excel: UploadFile = File(...),
-    menu_image: UploadFile = File(None),
-    freight_config: Optional[str] = Form(None), # Novo campo para configuração de frete
+    freight_config: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     conteudo_loja = await loja_txt.read()
     conteudo_loja = conteudo_loja.decode("utf-8")
-    
-    produtos_content = await produtos_excel.read()
-    df = await run_in_threadpool(pd.read_excel, io.BytesIO(produtos_content))
-    df.columns = df.columns.str.strip()
-
-    logger.info(f"Colunas lidas do Excel: {df.columns.tolist()}")
     
     tenant_data = schemas.TenantCreate(
         tenant_id=tenant_id,
@@ -62,48 +54,28 @@ async def create_tenant(
         cep=cep,
         latitude=latitude,
         longitude=longitude,
-        freight_config=freight_config # Passando o novo campo
+        freight_config=freight_config
     )
     
-    menu_image_url = None
-    if menu_image:
-        try:
-            menu_image_url = await file_handler.upload_image_to_supabase(menu_image)
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logger.error(f"Erro ao fazer upload da imagem do cardápio para o Supabase: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Erro interno ao fazer upload da imagem do cardápio.")
-
-    tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja, menu_image_url)
+    tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja)
     
-    saved_products = []
-    for _, row in df.iterrows():
-        produto = models.Product(
-            name=row['Plano_(Produto)'],
-            price=str(row['Preço_Sugerido_(Mensal)']),
-            retrieval_key=row.get('retrieval_key', f"{tenant_id}_{row['Plano_(Produto)']}"),
-            tenant_id=tenant_id,
-            publico_alvo=row.get('Público-Alvo'),
-            principais_funcionalidades=row.get('Principais_Funcionalidades'),
-            limitacoes_observacoes=row.get('Limitações/Observações'),
-            produto_promocao=row.get('produto_promocao'),
-            preco_promotions=row.get('preco_promotions'),
-            combo_product=row.get('combo_product')
-        )
-        db.add(produto)
-        saved_products.append(produto)
-    db.commit()
-
-    # Carregar dados no PGVector
-    await run_in_threadpool(agent_manager.load_data_to_vector_db, tenant_id, conteudo_loja, df)
+    # Carregar dados no PGVector (agora sem o df de produtos)
+    await agent_manager.load_data_to_vector_db(db, tenant_id)
 
     return tenant
 
 @router.get("/tenants/", response_model=List[schemas.Tenant], tags=["Tenants"], dependencies=[Depends(get_current_user)])
 def get_all_tenants(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    tenants = tenant_crud.get_all_tenants(db, skip=skip, limit=limit)
-    return tenants
+    try:
+        tenants = tenant_crud.get_all_tenants(db, skip=skip, limit=limit)
+        logger.info(f"Clientes recuperados do banco de dados: {tenants}")
+        return tenants
+    except Exception as e:
+        logger.error(f"Erro ao buscar clientes no banco de dados: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erro interno ao buscar informações dos clientes."
+        )
 
 @router.get("/tenants/{tenant_id}", response_model=schemas.Tenant, tags=["Tenants"], dependencies=[Depends(get_current_user)])
 def get_tenant(tenant_id: str, db: Session = Depends(get_db)):
@@ -124,9 +96,8 @@ async def update_tenant(
     longitude: Optional[float] = Form(None),
     url: Optional[str] = Form(None),
     is_active: Optional[bool] = Form(None),
-    freight_config: Optional[str] = Form(None), # Novo campo para configuração de frete
+    freight_config: Optional[str] = Form(None),
     loja_txt: UploadFile = File(None),
-    menu_image: UploadFile = File(None),
     db: Session = Depends(get_db)
 ):
     existing_tenant = tenant_crud.get_tenant_by_id(db, tenant_id)
@@ -143,7 +114,7 @@ async def update_tenant(
         "longitude": longitude,
         "url": url,
         "is_active": is_active,
-        "freight_config": freight_config, # Passando o novo campo
+        "freight_config": freight_config,
     }
     filtered_update_data = {}
     for key, value in tenant_update_data.items():
@@ -157,21 +128,10 @@ async def update_tenant(
         conteudo_loja = await loja_txt.read()
         conteudo_loja = conteudo_loja.decode("utf-8")
 
-    menu_image_url_to_update = None
-    if menu_image:
-        try:
-            menu_image_url_to_update = await file_handler.upload_image_to_supabase(menu_image)
-            if existing_tenant.menu_image_url:
-                await file_handler.delete_image_from_supabase(existing_tenant.menu_image_url)
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logger.error(f"Erro ao fazer upload da imagem do cardápio para o Supabase durante atualização: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="Erro interno ao fazer upload da imagem do cardápio.")
-    
-    updated_tenant = tenant_crud.update_tenant(db, tenant_id, tenant_update_schema_obj, conteudo_loja, menu_image_url_to_update)
+    updated_tenant = tenant_crud.update_tenant(db, tenant_id, tenant_update_schema_obj, conteudo_loja)
 
-    
+    # Re-carregar dados no PGVector após atualização
+    await agent_manager.load_data_to_vector_db(db, tenant_id)
 
     return updated_tenant
 
@@ -223,3 +183,38 @@ async def get_loja_txt(tenant_id: str, db: Session = Depends(get_db)):
     if not tenant or not tenant.config_ai:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Informações da loja não encontradas.")
     return PlainTextResponse(content=tenant.config_ai, media_type="text/plain")
+
+# --- Rotas para Imagens de Cardápio ---
+from typing import List
+
+@router.post("/tenants/{tenant_id}/menu-images/", response_model=List[schemas.MenuImage], tags=["Tenants"], dependencies=[Depends(get_current_user)])
+async def upload_menu_images(tenant_id: str, files: List[UploadFile] = File(...), db: Session = Depends(get_db)):
+    tenant = tenant_crud.get_tenant_by_id(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant não encontrado.")
+    
+    uploaded_images = []
+    for file in files:
+        image_url = await file_handler.upload_image_to_supabase(file)
+        menu_image_data = schemas.MenuImageCreate(image_url=image_url, description=file.filename)
+        db_menu_image = menu_image_crud.create_menu_image(db, menu_image_data, tenant_id)
+        uploaded_images.append(db_menu_image)
+        
+    return uploaded_images
+
+@router.get("/tenants/{tenant_id}/menu-images/", response_model=List[schemas.MenuImage], tags=["Tenants"], dependencies=[Depends(get_current_user)])
+def get_menu_images(tenant_id: str, db: Session = Depends(get_db)):
+    tenant = tenant_crud.get_tenant_by_id(db, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant não encontrado.")
+    return menu_image_crud.get_menu_images_by_tenant(db, tenant_id)
+
+@router.delete("/tenants/{tenant_id}/menu-images/{image_id}", tags=["Tenants"], dependencies=[Depends(get_current_user)])
+async def delete_menu_image(tenant_id: str, image_id: int, db: Session = Depends(get_db)):
+    db_menu_image = menu_image_crud.get_menu_image_by_id(db, image_id)
+    if not db_menu_image or db_menu_image.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Imagem não encontrada para este tenant.")
+    
+    await file_handler.delete_image_from_supabase(db_menu_image.image_url)
+    menu_image_crud.delete_menu_image(db, image_id)
+    return {"message": "Imagem deletada com sucesso."}

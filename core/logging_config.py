@@ -1,10 +1,10 @@
 import logging
 import os
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class CustomJsonFormatter(JsonFormatter):
     def add_fields(self, log_record, record, message_dict):
         super(CustomJsonFormatter, self).add_fields(log_record, record, message_dict)
         if not log_record.get('timestamp'):

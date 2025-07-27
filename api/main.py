@@ -8,7 +8,7 @@ from starlette.staticfiles import StaticFiles
 from core.logging_config import LOGGING_CONFIG
 from core import models
 from core.database import engine
-from api.routers import tenants, ai, personalities, products, authentication
+from api.routers import tenants, ai, personalities, products, authentication, opcionais, promocoes
 
 # Configuração de Logging
 dictConfig(LOGGING_CONFIG)
@@ -24,13 +24,22 @@ if not os.getenv("SECRET_KEY"):
 if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("A variável de ambiente GEMINI_API_KEY não está configurada.")
 
-# Cria as tabelas no banco de dados
-models.Base.metadata.create_all(bind=engine)
+# A linha abaixo foi removida para que o Alembic seja a única fonte da verdade para o schema.
+# # A linha abaixo foi removida para que o Alembic seja a única fonte da verdade para o schema.
+# models.Base.metadata.create_all(bind=engine)
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print_application_routes()
+    yield
 
 app = FastAPI(
     title="API de Chatbot com Equipe de IAs (Agno)",
     description="Processa mensagens multimodais usando uma equipe de agentes de IA.",
-    version="4.0.0"
+    version="4.0.0",
+    lifespan=lifespan
 )
 
 templates = Jinja2Templates(directory="templates")
@@ -49,8 +58,9 @@ app.include_router(tenants.router)
 app.include_router(ai.router)
 app.include_router(personalities.router)
 app.include_router(products.router)
+app.include_router(opcionais.router)
+app.include_router(promocoes.router)
 
-@app.on_event("startup")
 def print_application_routes():
     """Imprime todas as rotas disponíveis na inicialização da aplicação."""
     print("="*80)
@@ -60,5 +70,5 @@ def print_application_routes():
     print("-"*80)
     for route in app.routes:
         if hasattr(route, "methods"):
-            print(f"{', '.join(route.methods):<15} {route.path:<45} {route.name}")
+            print(f"{''.join(route.methods):<15} {route.path:<45} {route.name}")
     print("="*80)

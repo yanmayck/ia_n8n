@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,10 +20,11 @@
     </div>
 
     <div id="main-content" class="container" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h1>AI Customer Service Assistant - Configuration</h1>
-            <button id="logout-button" style="background: #dc3545; padding: 8px 15px; font-size: 0.9rem;">Sair</button>
-        </div>
+        <header>
+            <h1>Painel de Configuração</h1>
+            <button id="logout-button">Sair</button>
+        </header>
+        
         <div class="main-container">
             <div class="left-column">
                 <div class="form-section">
@@ -31,84 +32,187 @@
                     <ul id="client-list"></ul>
                 </div>
             </div>
+
             <div class="right-column">
                 <div class="form-section">
                     <h2>Gerenciamento de Clientes</h2>
-                    <p>Crie um novo cliente (tenant) para usar o assistente de atendimento.</p>
+                    <p>Crie um novo cliente ou selecione um da lista para editar.</p>
                     <form id="create-tenant-form">
-                        <label for="tenant_id_create">Nome da Instância</label>
-                        <input type="text" id="tenant_id_create" name="tenant_id" required>
-                        
-                        <label for="nome_loja_create">Nome da Loja</label>
-                        <input type="text" id="nome_loja_create" name="nome_loja" required>
-                        
-                        <label for="ia_personality_create">Nome da Personalidade da IA</label>
-                        <input type="text" id="ia_personality_create" name="ia_personality" required>
-                        
-                        <label for="ai_prompt_description_create">Descrição do Prompt da IA</label>
-                        <textarea id="ai_prompt_description_create" name="ai_prompt_description" rows="5" required></textarea>
-                        
-                        <label for="endereco_create">Endereço da Loja</label>
-                        <input type="text" id="endereco_create" name="endereco" required>
-                        
-                        <label for="cep_create">CEP</label>
-                        <input type="text" id="cep_create" name="cep" required>
-                        
-                        <label for="latitude_create">Latitude</label>
-                        <input type="number" id="latitude_create" name="latitude" step="any" required>
-                        
-                        <label for="longitude_create">Longitude</label>
-                        <input type="number" id="longitude_create" name="longitude" step="any" required>
-                        
-                        <label for="loja_txt_create">Arquivo com informações da empresa</label>
-                        <div id="loja_txt_edit_area">
-                            <textarea id="loja_txt_content" name="loja_txt_content" rows="10" style="width: 100%; display: none;"></textarea>
-                            <input type="file" id="loja_txt_upload" name="loja_txt_upload" accept=".txt" style="display: block;">
-                            <button type="button" id="download_loja_txt" style="display: none; margin-top: 5px; background: #3498db;">Baixar TXT Atual</button>
-                        </div>
-                        
-                        <label for="produtos_excel_create">Tabela de produtos (.xlsx)</label>
-                        <input type="file" id="produtos_excel_create" name="produtos_excel" accept=".xlsx,.xls" required>
-                        <button type="button" id="download_produtos_excel" style="display: none; margin-top: 5px; background: #27ae60;">Baixar Excel Atual</button>
-                        
-                        <label for="menu_image_create">Imagem do Cardápio (opcional)</label>
-                        <input type="file" id="menu_image_create" name="menu_image" accept="image/*">
-                        
-                        <div id="current_menu_image_preview" style="margin-top: 10px; margin-bottom: 10px;">
-                            <!-- A imagem do cardápio atual será carregada aqui para edição -->
+                        <div class="form-grid">
+                            <div class="full-width">
+                                <label for="tenant_id_create">Nome da Instância (ID único)</label>
+                                <input type="text" id="tenant_id_create" name="tenant_id" required>
+                            </div>
+                            <div class="full-width">
+                                <label for="nome_loja_create">Nome da Loja</label>
+                                <input type="text" id="nome_loja_create" name="nome_loja" required>
+                            </div>
                         </div>
 
-                        <label for="freight_config_create">Configuração de Frete (JSON)</label>
-                        <input type="text" id="freight_config_create" name="freight_config" placeholder='Ex: {"type": "FIXED", "price": 10.0}'>
-                        <div style="margin-top: 10px; padding: 10px; background-color: #3a3a5a; border-radius: 5px; font-size: 0.9em; line-height: 1.4;">
-                            <p style="margin: 0 0 5px 0;"><strong>Formatos Suportados:</strong></p>
-                            <p style="margin: 2px 0;"><strong>Fixo:</strong> <code>{"type": "FIXED", "price": 10.00}</code></p>
-                            <p style="margin: 2px 0;"><strong>Por KM:</strong> <code>{"type": "PER_KM", "price_per_km": 2.50}</code></p>
-                            <p style="margin: 2px 0;"><strong>Por Faixa:</strong> <code>{"type": "TIERED", "tiers": [{"up_to_km": 3, "price": 5.00}, {"up_to_km": 999, "price": 10.00}]}</code></p>
-                        </div>
+                        <fieldset>
+                            <legend>Configuração da IA</legend>
+                            <label for="ia_personality_create">Nome da Personalidade da IA</label>
+                            <input type="text" id="ia_personality_create" name="ia_personality" required>
+                            <label for="ai_prompt_description_create">Descrição do Prompt da IA</label>
+                            <textarea id="ai_prompt_description_create" name="ai_prompt_description" rows="5" required></textarea>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend>Endereço e Localização</legend>
+                            <div class="form-grid">
+                                <div class="full-width">
+                                    <label for="endereco_create">Endereço da Loja</label>
+                                    <input type="text" id="endereco_create" name="endereco" required>
+                                </div>
+                                <div>
+                                    <label for="cep_create">CEP</label>
+                                    <input type="text" id="cep_create" name="cep" required>
+                                </div>
+                                <div>
+                                    <label for="freight_config_create">Configuração de Frete (JSON)</label>
+                                    <input type="text" id="freight_config_create" name="freight_config" placeholder='{"type": "FIXED", "price": 10.0}'>
+                                </div>
+                                <div>
+                                    <label for="latitude_create">Latitude</label>
+                                    <input type="number" id="latitude_create" name="latitude" step="any" required>
+                                </div>
+                                <div>
+                                    <label for="longitude_create">Longitude</label>
+                                    <input type="number" id="longitude_create" name="longitude" step="any" required>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend>Informações da Empresa (Cardápio em Texto)</legend>
+                            <div id="loja_txt_edit_area">
+                                <textarea id="loja_txt_content" name="loja_txt_content" rows="10" style="width: 100%; display: none;"></textarea>
+                                <input type="file" id="loja_txt_upload" name="loja_txt_upload" accept=".txt" style="display: block;">
+                                <button type="button" id="download_loja_txt" style="display: none; margin-top: 5px;" class="button">Baixar TXT Atual</button>
+                            </div>
+                        </fieldset>
                         
-                        <button type="submit">Salvar Cliente</button>
-                        <button type="button" id="cancel-edit" style="display: none; background: #e74c3c;">Cancelar Edição</button>
+                        <div class="button-group">
+                            <button type="submit">Salvar Cliente</button>
+                            <button type="button" id="cancel-edit" style="display: none;">Cancelar Edição</button>
+                        </div>
                     </form>
+                </div>
+
+                <div class="form-section" id="product-management-section">
+                    <h2>Gerenciamento do Cardápio</h2>
+                    <div class="tab-buttons">
+                        <button class="tab-button active" data-tab="products">Produtos</button>
+                        <button class="tab-button" data-tab="opcionais">Opcionais</button>
+                        <button class="tab-button" data-tab="promocoes">Promoções</button>
+                        <button class="tab-button" data-tab="menu-images">Imagens do Cardápio</button>
+                    </div>
+                    <div id="tab-content">
+                        <div id="products-tab" class="tab-pane active">
+                            <h3>Produtos</h3>
+                            <form id="product-form">
+                                <input type="hidden" id="product_id" name="id_produto">
+                                <label for="nome_produto">Nome do Produto</label>
+                                <input type="text" id="nome_produto" name="nome_produto" required>
+                                <label for="descricao_produto">Descrição</label>
+                                <textarea id="descricao_produto" name="descricao_produto"></textarea>
+                                <label for="categoria_produto">Categoria</label>
+                                <input type="text" id="categoria_produto" name="categoria_produto">
+                                <label for="preco_base">Preço Base</label>
+                                <input type="number" id="preco_base" name="preco_base" step="0.01" required>
+                                <label for="tempo_preparo_min">Tempo de Preparo (min)</label>
+                                <input type="number" id="tempo_preparo_min" name="tempo_preparo_min">
+                                <label for="disponivel_hoje">Disponível Hoje</label>
+                                <input type="checkbox" id="disponivel_hoje" name="disponivel_hoje">
+                                <div id="product-opcionais-linking"></div>
+                                <div class="button-group">
+                                    <button type="submit">Salvar Produto</button>
+                                    <button type="button" id="cancel-product-edit" class="button">Cancelar</button>
+                                </div>
+                            </form>
+                            <h4>Produtos Existentes</h4>
+                            <ul id="products-list" class="item-list"></ul>
+                        </div>
+                        <div id="opcionais-tab" class="tab-pane">
+                            <h3>Opcionais</h3>
+                            <form id="opcional-form">
+                                <input type="hidden" id="opcional_id" name="id_opcional">
+                                <label for="nome_opcional">Nome do Opcional</label>
+                                <input type="text" id="nome_opcional" name="nome_opcional" required>
+                                <label for="tipo_opcional">Tipo</label>
+                                <input type="text" id="tipo_opcional" name="tipo_opcional">
+                                <label for="preco_adicional">Preço Adicional</label>
+                                <input type="number" id="preco_adicional" name="preco_adicional" step="0.01">
+                                <div class="button-group">
+                                    <button type="submit">Salvar Opcional</button>
+                                    <button type="button" id="cancel-opcional-edit" class="button">Cancelar</button>
+                                </div>
+                            </form>
+                            <h4>Opcionais Existentes</h4>
+                            <ul id="opcionais-list" class="item-list"></ul>
+                        </div>
+                        <div id="promocoes-tab" class="tab-pane">
+                            <h3>Promoções</h3>
+                            <form id="promocao-form">
+                                <input type="hidden" id="promocao_id" name="id_promocao">
+                                <label for="nome_promocao">Nome da Promoção</label>
+                                <input type="text" id="nome_promocao" name="nome_promocao" required>
+                                <label for="descricao_para_ia">Descrição para IA</label>
+                                <textarea id="descricao_para_ia" name="descricao_para_ia"></textarea>
+                                
+                                <label for="condicao_tipo">Tipo de Condição</label>
+                                <select id="condicao_tipo" name="condicao_tipo">
+                                    <option value="">Nenhuma</option>
+                                    <option value="DIA_SEMANA">Dia da Semana</option>
+                                    <option value="VALOR_MINIMO">Valor Mínimo do Pedido</option>
+                                </select>
+                                <div id="condicao_campos"></div>
+
+                                <label for="acao_tipo">Tipo de Ação</label>
+                                <select id="acao_tipo" name="acao_tipo">
+                                    <option value="DESCONTO_PERCENTUAL">Desconto Percentual</option>
+                                    <option value="DESCONTO_FIXO">Desconto Fixo</option>
+                                    <option value="BRINDE">Brinde</option>
+                                </select>
+                                <div id="acao_campos"></div>
+
+                                <div class="button-group">
+                                    <button type="submit">Salvar Promoção</button>
+                                    <button type="button" id="cancel-promocao-edit" class="button">Cancelar</button>
+                                </div>
+                            </form>
+                            <h4>Promoções Existentes</h4>
+                            <ul id="promocoes-list" class="item-list"></ul>
+                        </div>
+                        <div id="menu-images-tab" class="tab-pane">
+                            <h3>Imagens do Cardápio</h3>
+                            <input type="file" id="menu_images_upload" name="menu_images_upload" accept="image/*" multiple disabled>
+                            <button id="upload-menu-images" class="button" disabled>Upload Imagens</button>
+                            <div id="uploaded-menu-images-preview"><p>Selecione um cliente para gerenciar.</p></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="form-section">
                     <h2>Calcular Frete</h2>
                     <form id="calcular-frete-form">
-                        <label for="frete_tenant_id">Cliente/Loja</label>
-                        <select id="frete_tenant_id" name="tenant_id" required>
-                            <option value="">Selecione uma loja...</option>
-                        </select>
-                        
-                        <label for="cliente_lat">Latitude do Cliente</label>
-                        <input type="number" id="cliente_lat" name="cliente_lat" step="any" required>
-                        
-                        <label for="cliente_lng">Longitude do Cliente</label>
-                        <input type="number" id="cliente_lng" name="cliente_lng" step="any" required>
-                        
+                        <div class="form-grid">
+                            <div>
+                                <label for="frete_tenant_id">Cliente/Loja</label>
+                                <select id="frete_tenant_id" name="tenant_id" required></select>
+                            </div>
+                            <div>
+                                <label for="cliente_lat">Latitude do Cliente</label>
+                                <input type="number" id="cliente_lat" name="cliente_lat" step="any" required>
+                            </div>
+                            <div>
+                                <label for="cliente_lng">Longitude do Cliente</label>
+                                <input type="number" id="cliente_lng" name="cliente_lng" step="any" required>
+                            </div>
+                        </div>
                         <button type="submit">Calcular Frete</button>
                     </form>
-                    <div id="frete-result" style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; display: none;"></div>
+                    <div id="frete-result" style="margin-top: 15px; padding: 10px; background: #3a3a5a; border-radius: 5px; display: none;"></div>
                 </div>
             </div>
         </div>

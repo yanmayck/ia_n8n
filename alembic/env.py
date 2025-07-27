@@ -69,6 +69,7 @@ def run_migrations_online() -> None:
     """
     # Use DATABASE_URL do ambiente
     database_url = os.environ.get("DATABASE_URL")
+
     if not database_url:
         raise Exception("DATABASE_URL environment variable not set.")
 

@@ -21,3 +21,7 @@ duckduckgo-search
 openpyxl
 langchain-google-genai
 jinja2
+Pillow
+pytest
+httpx
+pytest-asyncio

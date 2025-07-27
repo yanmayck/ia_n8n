@@ -1,97 +1,85 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-import io
-from openpyxl import Workbook
-from fastapi.responses import StreamingResponse
 
-from crud import product_crud
+from crud import product_crud, opcional_crud, promocao_crud
 from core import schemas
-from services import product_service
 from api.dependencies import get_db, get_current_user
+from services.agent_manager import load_data_to_vector_db
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/upload-products", tags=["Products"], dependencies=[Depends(get_current_user)])
-async def upload_products(tenant_id: str, file: UploadFile, db: Session = Depends(get_db)):
-    logger.info(f"Iniciando upload de produtos para tenant: {tenant_id}")
-    try:
-        products = await product_service.process_product_sheet(tenant_id, file, db)
-        logger.info(f"{len(products)} produtos uploaded successfully for tenant: {tenant_id}")
-        return {"message": f"{len(products)} products uploaded successfully."}
-    except Exception as e:
-        logger.error(f"Erro no upload de produtos para tenant {tenant_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+# --- Rotas para Produtos ---
+@router.post("/products/{tenant_id}", response_model=schemas.Product, tags=["Products"], dependencies=[Depends(get_current_user)])
+async def create_product(tenant_id: str, product: schemas.ProductCreate, db: Session = Depends(get_db)):
+    logger.info(f"Criando produto para tenant {tenant_id}: {product.nome_produto}")
+    db_product = product_crud.create_product(db, product, tenant_id)
+    
+    return db_product
 
 @router.get("/products/{tenant_id}", response_model=List[schemas.Product], tags=["Products"], dependencies=[Depends(get_current_user)])
 def get_products(tenant_id: str, db: Session = Depends(get_db)):
-    logger.info(f"Buscando produtos para tenant: {tenant_id}")
-    return product_crud.get_products_by_tenant_id(db, tenant_id=tenant_id)
+    logger.info(f"Buscando produtos para o tenant: {tenant_id}")
+    products = product_crud.get_products_by_tenant(db, tenant_id=tenant_id)
+    logger.info(f"Encontrados {len(products)} produtos para o tenant {tenant_id}.")
+    # Opcional: Logar os nomes dos produtos para verificação rápida
+    if products:
+        product_names = [p.nome_produto for p in products]
+        logger.debug(f"Nomes dos produtos: {product_names}")
+    return products
 
-@router.get("/products/{tenant_id}/download-excel", tags=["Products"], dependencies=[Depends(get_current_user)])
-async def download_products_excel(tenant_id: str, db: Session = Depends(get_db)):
-    logger.info(f"Gerando arquivo Excel de produtos para tenant: {tenant_id}")
-    products = product_crud.get_products_by_tenant_id(db, tenant_id=tenant_id)
+@router.get("/products/{tenant_id}/{product_id}", response_model=schemas.Product, tags=["Products"], dependencies=[Depends(get_current_user)])
+def get_product(tenant_id: str, product_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Buscando produto {product_id} para tenant {tenant_id}")
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
+    return product
+
+@router.put("/products/{tenant_id}/{product_id}", response_model=schemas.Product, tags=["Products"], dependencies=[Depends(get_current_user)])
+async def update_product(tenant_id: str, product_id: int, product: schemas.ProductUpdate, db: Session = Depends(get_db)):
+    logger.info(f"Atualizando produto {product_id} para tenant {tenant_id}")
+    db_product = product_crud.get_product(db, product_id)
+    if not db_product or db_product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
     
-    if not products:
-        raise HTTPException(status_code=404, detail="Nenhum produto encontrado para este cliente.")
+    updated_product = product_crud.update_product(db, product_id, product)
+    
+    return updated_product
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Produtos"
+@router.delete("/products/{tenant_id}/{product_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+async def delete_product(tenant_id: str, product_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Deletando produto {product_id} para tenant {tenant_id}")
+    db_product = product_crud.get_product(db, product_id)
+    if not db_product or db_product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
+    
+    product_crud.delete_product(db, product_id)
+    
+    return {"message": "Produto deletado com sucesso."}
 
-    headers = [
-        "Plano_(Produto)", 
-        "Preço_Sugerido_(Mensal)", 
-        "retrieval_key", 
-        "tenant_id", 
-        "Público-Alvo", 
-        "Principais_Funcionalidades", 
-        "Limitações/Observações", 
-        "produto_promocao", 
-        "preco_promotions", 
-        "combo_product",
-        "tempo_preparo_minutos"
-    ]
-    ws.append(headers)
+# --- Rotas para Ligar/Desligar Opcionais ---
+@router.post("/products/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def link_opcional_to_product_route(product_id: int, opcional_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Ligando opcional {opcional_id} ao produto {product_id}")
+    updated_product = product_crud.link_opcional_to_product(db, product_id, opcional_id)
+    if not updated_product:
+        raise HTTPException(status_code=404, detail="Produto ou opcional não encontrado.")
+    return updated_product
 
-    for product in products:
-        ws.append([
-            product.name,
-            product.price,
-            product.retrieval_key,
-            product.tenant_id,
-            product.publico_alvo,
-            product.principais_funcionalidades,
-            product.limitacoes_observacoes,
-            product.produto_promocao,
-            product.preco_promotions,
-            product.combo_product,
-            product.tempo_preparo_minutos
-        ])
+@router.delete("/products/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def unlink_opcional_from_product_route(product_id: int, opcional_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Desligando opcional {opcional_id} do produto {product_id}")
+    updated_product = product_crud.unlink_opcional_from_product(db, product_id, opcional_id)
+    if not updated_product:
+        raise HTTPException(status_code=404, detail="Produto ou opcional não encontrado, ou ligação inexistente.")
+    return updated_product
 
-    excel_file = io.BytesIO()
-    wb.save(excel_file)
-    excel_file.seek(0)
-
-    filename = f"produtos_{tenant_id}.xlsx"
-    return StreamingResponse(excel_file, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
-
-@router.get("/get-file/{retrieval_key}", tags=["Files"], dependencies=[Depends(get_current_user)])
-def get_file(retrieval_key: str, db: Session = Depends(get_db)):
-    logger.info(f"Requisição para recuperar informações do produto com retrieval_key: {retrieval_key}")
-    product = product_crud.get_product_by_retrieval_key(db, retrieval_key=retrieval_key)
-
-    if not product:
-        logger.warning(f"Produto não encontrado para retrieval_key: {retrieval_key}")
-        raise HTTPException(status_code=404, detail="Produto não encontrado com esta chave.")
-
-    logger.info(f"Produto '{product.name}' encontrado para retrieval_key: {retrieval_key}")
-    # Este endpoint atualmente apenas confirma a existência do produto.
-    # Para servir o conteúdo de um arquivo real, seria necessário um mecanismo de armazenamento de arquivos.
-    return {"message": f"Informações do produto para a chave '{retrieval_key}' recuperadas com sucesso.", "product_name": product.name, "product_details": product.dict()}
+@router.get("/products/{product_id}/opcionais", response_model=List[schemas.Opcional], tags=["Products"], dependencies=[Depends(get_current_user)])
+def get_linked_opcionais_route(product_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Buscando opcionais ligados ao produto {product_id}")
+    opcionais = product_crud.get_linked_opcionais(db, product_id)
+    return opcionais

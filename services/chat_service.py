@@ -25,7 +25,7 @@ async def handle_message(
     user_id: str, 
     session_id: str, 
     message: str, 
-    tenant_id: str, # Alterado de personality_name
+    tenant_id: str, 
     personality_prompt: str,
     file_content: bytes = None,
     mimetype: str = None,
@@ -49,6 +49,7 @@ async def handle_message(
         # 3. Inicializar e chamar o Orquestrador com os dados brutos
         logger.info(f"Delegando para o OrchestratorAgent. User: {user_id}, Session: {session_id}")
         orchestrator = OrchestratorAgent(
+            db=db,
             session_id=session_id,
             tenant_id=tenant.tenant_id,
             user_id=user_id
@@ -63,7 +64,7 @@ async def handle_message(
             client_longitude=client_longitude
         )
         
-        ai_response_text = ai_response_obj.response_text
+        ai_response_text = ai_response_obj['response_text']
         personality_id = tenant.personality.id if tenant.personality else None
 
         # 4. Salvar a interação no banco de dados
@@ -86,3 +87,4 @@ async def handle_message(
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno ao processar a mensagem.")
     finally:
         db.close()
+    

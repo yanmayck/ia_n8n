@@ -8,10 +8,11 @@ import base64
 import mimetypes
 import httpx
 
-from crud import tenant_crud, interaction_crud
+from crud import tenant_crud, interaction_crud, menu_image_crud
 from core import schemas
-from services import chat_service, google_maps_service
+from services import chat_service, google_maps_service, file_handler
 from api.dependencies import get_db, get_current_user
+from core.database import SessionLocal
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,12 +25,11 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
         logger.info(f"RAW REQUEST BODY RECEIVED: {request_body}")
         
         try:
-            # Mapeia manualmente os campos da requisição para o esquema Pydantic
             request_data = {
                 "message_user": request_body.get("message_user", ""),
                 "message_base64": request_body.get("message_base64", ""),
                 "mimetype": request_body.get("mimetype"),
-                "tenant_id": request_body.get("tenant_id"), # Alterado para tenant_id
+                "tenant_id": request_body.get("tenant_id"),
                 "user_phone": request_body.get("user_phone"),
                 "whatsapp_message_id": request_body.get("whatsapp_message_id"),
                 "latitude": request_body.get("latitude"),
@@ -46,7 +46,6 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
             logger.error(f"Tenant com ID '{ai_request.tenant_id}' não encontrado ou inativo.")
             raise HTTPException(status_code=404, detail=f"Cliente com o ID '{ai_request.tenant_id}' não foi encontrado ou está inativo.")
 
-        # Usa o prompt da personalidade associada ao tenant
         personality_prompt = tenant.personality.prompt if tenant.personality and tenant.personality.prompt else "Você é um assistente de IA prestativo."
         
         file_content = None
@@ -60,20 +59,13 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                 logger.error(f"Erro ao decodificar a mensagem em base64: {e}", exc_info=True)
         
         logger.info(f"Chamando chat_service.handle_message com os seguintes parâmetros:")
-        logger.debug(f"  user_id: {ai_request.user_phone}")
-        logger.debug(f"  session_id: {ai_request.whatsapp_message_id}")
-        logger.debug(f"  message: {ai_request.message_user}")
-        logger.debug(f"  tenant_id: {ai_request.tenant_id}")
-        logger.debug(f"  has_file: {file_content is not None}")
-        logger.debug(f"  mimetype: {mimetype}")
-        logger.debug(f"  client_latitude: {ai_request.latitude}")
-        logger.debug(f"  client_longitude: {ai_request.longitude}")
+        # ... (logs de debug)
 
         ai_result = await chat_service.handle_message(
             user_id=ai_request.user_phone,
             session_id=ai_request.whatsapp_message_id,
             message=ai_request.message_user,
-            tenant_id=ai_request.tenant_id, # Passando tenant_id
+            tenant_id=ai_request.tenant_id,
             personality_prompt=personality_prompt,
             file_content=file_content,
             mimetype=mimetype,
@@ -84,12 +76,10 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
         logger.info(f"Resposta Estruturada da IA: {ai_result}")
 
         response_parts = []
-        # A resposta de texto agora está corretamente extraída do dicionário retornado
         text_response = ai_result.get("response_text")
         human_handoff = ai_result.get("human_handoff", False)
         send_menu = ai_result.get("send_menu", False)
 
-        # Garante que mesmo que text_response seja um dicionário ou outra coisa, ele seja tratado como string
         if not isinstance(text_response, str):
             text_response = str(text_response)
 
@@ -98,31 +88,35 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                 "part_id": 1,
                 "type": "text",
                 "text_content": text_response,
-                "human_handoff": False, # O human_handoff é tratado separadamente abaixo
-                "send_menu": False # O send_menu é tratado separadamente abaixo
+                "human_handoff": False,
+                "send_menu": False
             })
 
-        if send_menu and tenant.menu_image_url:
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(tenant.menu_image_url)
-                    response.raise_for_status()
-                    image_base64 = base64.b64encode(response.content).decode("utf-8")
-                    mimetype, _ = mimetypes.guess_type(tenant.menu_image_url)
+        if send_menu:
+            latest_image = await run_in_threadpool(menu_image_crud.get_latest_menu_image_by_tenant, db, tenant.tenant_id)
+            if latest_image and latest_image.image_url:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(latest_image.image_url)
+                        response.raise_for_status()
+                        optimized_content = await file_handler.optimize_image(response.content)
+                        image_base64 = base64.b64encode(optimized_content).decode("utf-8")
 
-                response_parts.append({
-                    "part_id": len(response_parts) + 1,
-                    "type": "file",
-                    "human_handoff": False,
-                    "send_menu": True,
-                    "file_details": {
-                        "retrieval_key": "menu_image",
-                        "file_type": mimetype or "image/jpeg",
-                        "base64_content": image_base64
-                    }
-                })
-            except Exception as e:
-                logger.error(f"Erro ao baixar ou processar imagem do cardápio: {e}", exc_info=True)
+                    response_parts.append({
+                        "part_id": len(response_parts) + 1,
+                        "type": "file",
+                        "human_handoff": False,
+                        "send_menu": True,
+                        "file_details": {
+                            "retrieval_key": "menu_image",
+                            "file_type": "image/jpeg",
+                            "base64_content": image_base64
+                        }
+                    })
+                except Exception as e:
+                    logger.error(f"Erro ao baixar ou processar imagem do cardápio: {e}", exc_info=True)
+            else:
+                logger.warning(f"send_menu era True, mas nenhuma imagem de cardápio foi encontrada para o tenant {tenant.tenant_id}")
         
         if human_handoff:
             response_parts.append({

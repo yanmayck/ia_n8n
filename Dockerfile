@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 # Limpa o cache do pip e instala as dependências Python a partir do arquivo de requisitos
 RUN pip cache purge && pip install --no-cache-dir -r requirements.txt
 
+# Força a reinstalação da agno para garantir que a versão correta seja usada
+RUN pip install --no-cache-dir --force-reinstall agno
+
 # Copia o restante do código da sua aplicação para o diretório de trabalho
 # O '.' no final significa o diretório atual do host.
 # O .dockerignore garantirá que arquivos como .env não sejam copiados.
@@ -34,4 +37,4 @@ EXPOSE 8000
 # Comando para iniciar sua aplicação FastAPI
 # Lembre-se que 'api.main:app' significa o arquivo 'main.py' dentro da pasta 'api',
 # e 'app' é a instância do FastAPI.
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
