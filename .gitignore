@@ -1,7 +1,17 @@
-__pycache__
-venv
-.env
-logs 
-*.log 
-database
+# Arquivos de Sistema Operacional
+.DS_Store
+Thumbs.db
 *.db
+# Arquivos de Editores e IDEs
+.vscode/
+.idea/
+__pycache__/
+# Arquivos de Teste (Pytest, Coverage)
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+# Arquivos de Build e Distribuição
+/dist/
+/build/
+*.egg-info/
