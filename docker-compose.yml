@@ -12,5 +12,14 @@ services:
       - .env
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
     dns:
-      - 8.8.8.8 
+      - 8.8.8.8
+
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6370:6379"

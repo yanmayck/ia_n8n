@@ -1,4 +1,5 @@
 import logging
+import json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List
@@ -7,12 +8,14 @@ from starlette.concurrency import run_in_threadpool
 import base64
 import mimetypes
 import httpx
+import os
 
 from crud import tenant_crud, interaction_crud, menu_image_crud
 from core import schemas
 from services import chat_service, google_maps_service, file_handler
 from api.dependencies import get_db, get_current_user
 from core.database import SessionLocal
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,6 +50,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail=f"Cliente com o ID '{ai_request.tenant_id}' não foi encontrado ou está inativo.")
 
         personality_prompt = tenant.personality.prompt if tenant.personality and tenant.personality.prompt else "Você é um assistente de IA prestativo."
+        logger.info(f"PROMPT DE PERSONALIDADE PARA O TENANT {ai_request.tenant_id}': {personality_prompt}")
         
         file_content = None
         mimetype = None
@@ -55,7 +59,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                 file_content = base64.b64decode(ai_request.message_base64)
                 mimetype = ai_request.mimetype
                 logger.info(f"Mensagem com mídia recebida. Mimetype: {mimetype}, Tamanho: {len(file_content)} bytes")
-            except Exception as e:
+            except (base64.binascii.Error, TypeError) as e:
                 logger.error(f"Erro ao decodificar a mensagem em base64: {e}", exc_info=True)
         
         logger.info(f"Chamando chat_service.handle_message com os seguintes parâmetros:")
@@ -67,6 +71,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
             message=ai_request.message_user,
             tenant_id=ai_request.tenant_id,
             personality_prompt=personality_prompt,
+            db=db, # Passando a sessão do DB
             file_content=file_content,
             mimetype=mimetype,
             client_latitude=ai_request.latitude,
@@ -113,7 +118,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                             "base64_content": image_base64
                         }
                     })
-                except Exception as e:
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
                     logger.error(f"Erro ao baixar ou processar imagem do cardápio: {e}", exc_info=True)
             else:
                 logger.warning(f"send_menu era True, mas nenhuma imagem de cardápio foi encontrada para o tenant {tenant.tenant_id}")
@@ -133,6 +138,9 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
 
     except HTTPException as http_exc:
         raise http_exc
+    except json.JSONDecodeError as e:
+        logger.critical(f"Erro de decodificação JSON na rota /ai: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Requisição JSON inválida: {str(e)}")
     except Exception as e:
         logger.critical(f"Erro crítico na rota /ai: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Ocorreu um erro interno no servidor: {str(e)}")
@@ -180,6 +188,6 @@ async def calcular_frete(
                 "longitude": cliente_lng
             }
         }
-    except Exception as e:
+    except (httpx.RequestError, httpx.HTTPStatusError) as e:
         logger.error(f"Erro ao calcular frete para {tenant_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao calcular frete: {str(e)}")

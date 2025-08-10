@@ -12,4 +12,7 @@ def get_human_handoff_agent(model_id: str, api_key: str):
         description="Você é um agente especializado em identificar se o usuário deseja falar com um humano ou está frustrado. Responda apenas com um JSON booleano indicando se deve haver handoff.",
         response_model=HumanHandoffOutput,
         structured_outputs=True,
+        retries=1,
+        delay_between_retries=2,
+        exponential_backoff=False,
     )

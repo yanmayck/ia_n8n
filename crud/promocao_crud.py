@@ -1,4 +1,5 @@
 import logging
+from typing import List
 from sqlalchemy.orm import Session
 from core import models, schemas
 
@@ -35,3 +36,24 @@ def delete_promocao(db: Session, promocao_id: int):
         db.delete(db_promocao)
         db.commit()
     return db_promocao
+
+def replace_all_promocoes_for_tenant(db: Session, tenant_id: str, promocoes_data: List[dict]):
+    """
+    Deleta todas as promoções existentes de um tenant e insere as novas.
+    """
+    db.query(models.Promocao).filter(models.Promocao.tenant_id == tenant_id).delete(synchronize_session=False)
+    
+    new_promocoes = []
+    for promo_data in promocoes_data:
+        new_promo = models.Promocao(
+            tenant_id=tenant_id,
+            nome_promocao=promo_data.get('nome'),
+            descricao_para_ia=promo_data.get('descricao_para_ia'),
+            condicao_json=promo_data.get('condicao_json'),
+            acao_json=promo_data.get('acao_json'),
+            is_ativa=promo_data.get('is_ativa', True)
+        )
+        new_promocoes.append(new_promo)
+        
+    db.bulk_save_objects(new_promocoes)
+    db.commit()

@@ -1,12 +1,31 @@
 import logging
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from core import models, schemas
 from typing import List
 
 logger = logging.getLogger(__name__)
 
 def get_product(db: Session, product_id: int):
-    return db.query(models.Product).filter(models.Product.id_produto == product_id).first()
+    return (
+        db.query(models.Product)
+        .options(joinedload(models.Product.opcionais), joinedload(models.Product.promocoes))
+        .filter(models.Product.id_produto == product_id)
+        .first()
+    )
+
+def get_product_by_name_and_tenant(db: Session, name: str, tenant_id: str) -> models.Product | None:
+    """
+    Busca um produto específico pelo nome ou descrição e pelo ID do tenant.
+    A busca é case-insensitive e procura por substrings.
+    """
+    return db.query(models.Product).filter(
+        or_(
+            models.Product.nome_produto.ilike(f"%{name}%"),
+            models.Product.descricao_produto.ilike(f"%{name}%")
+        ),
+        models.Product.tenant_id == tenant_id
+    ).first()
 
 def get_products_by_tenant(db: Session, tenant_id: str, skip: int = 0, limit: int = 100):
     return db.query(models.Product).filter(models.Product.tenant_id == tenant_id).offset(skip).limit(limit).all()
@@ -78,3 +97,66 @@ def get_linked_opcionais(db: Session, product_id: int) -> List[models.Opcional]:
     if product:
         return product.opcionais
     return []
+
+def link_promocao_to_product(db: Session, product_id: int, promocao_id: int):
+    product = db.query(models.Product).filter(models.Product.id_produto == product_id).first()
+    promocao = db.query(models.Promocao).filter(models.Promocao.id_promocao == promocao_id).first()
+    if product and promocao:
+        product.promocoes.append(promocao)
+        db.commit()
+        return product
+    return None
+
+def unlink_promocao_from_product(db: Session, product_id: int, promocao_id: int):
+    product = db.query(models.Product).filter(models.Product.id_produto == product_id).first()
+    promocao = db.query(models.Promocao).filter(models.Promocao.id_promocao == promocao_id).first()
+    if product and promocao:
+        try:
+            product.promocoes.remove(promocao)
+            db.commit()
+            return product
+        except ValueError:
+            pass
+    return None
+
+def get_linked_promocoes(db: Session, product_id: int) -> List[models.Promocao]:
+    product = db.query(models.Product).options(joinedload(models.Product.promocoes)).filter(models.Product.id_produto == product_id).first()
+    if product:
+        return product.promocoes
+    return []
+
+def get_product_by_name_and_tenant(db: Session, name: str, tenant_id: str) -> models.Product | None:
+    """
+    Busca um produto específico pelo nome ou descrição e pelo ID do tenant.
+    A busca é case-insensitive e procura por substrings.
+    """
+    return db.query(models.Product).filter(
+        or_(
+            models.Product.nome_produto.ilike(f"%{name}%"),
+            models.Product.descricao_produto.ilike(f"%{name}%")
+        ),
+        models.Product.tenant_id == tenant_id
+    ).first()
+
+def replace_all_products_for_tenant(db: Session, tenant_id: str, products_data: List[dict]):
+    """
+    Deleta todos os produtos existentes de um tenant e insere os novos.
+    """
+    # Deleta os produtos antigos
+    db.query(models.Product).filter(models.Product.tenant_id == tenant_id).delete(synchronize_session=False)
+    
+    # Insere os novos produtos
+    new_products = []
+    for prod_data in products_data:
+        new_prod = models.Product(
+            tenant_id=tenant_id,
+            nome_produto=prod_data.get('nome'),
+            descricao_produto=prod_data.get('descricao'),
+            categoria_produto=prod_data.get('categoria'),
+            preco_base=prod_data.get('preco'),
+            # Adicione outros campos conforme necessário
+        )
+        new_products.append(new_prod)
+        
+    db.bulk_save_objects(new_products)
+    db.commit()

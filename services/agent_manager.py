@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 async def load_data_to_vector_db(db: Session, tenant_id: str):
     logger.info(f"Iniciando carregamento de dados para o VectorDB do tenant: {tenant_id}")
-    db = SessionLocal()
     try:
         vector_db_manager = VectorDBManager(db, collection_name=tenant_id)
 
@@ -31,8 +30,9 @@ async def load_data_to_vector_db(db: Session, tenant_id: str):
         
         logger.info(f"Documento de informações da loja carregado/atualizado com sucesso no VectorDB para o tenant {tenant_id}.")
 
-    except Exception as e:
-        logger.error(f"Erro CRÍTICO ao carregar dados para o VectorDB do tenant {tenant_id}: {e}", exc_info=True)
+    except ValueError as e:
+        logger.error(f"Erro de configuração ou validação ao carregar dados para o VectorDB do tenant {tenant_id}: {e}", exc_info=True)
         raise
-    finally:
-        db.close()
+    except Exception as e:
+        logger.critical(f"Erro CRÍTICO ao carregar dados para o VectorDB do tenant {tenant_id}: {e}", exc_info=True)
+        raise

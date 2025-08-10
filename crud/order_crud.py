@@ -1,13 +1,9 @@
-from core.database import SessionLocalLocal
+from sqlalchemy.orm import Session
 from core import models, schemas
 
-def create_order(db_session_factory, order: schemas.OrderCreate):
-    db = db_session_factory()
-    try:
-        db_order = models.Order(**order.dict())
-        db.add(db_order)
-        db.commit()
-        db.refresh(db_order)
-        return db_order
-    finally:
-        db.close()
+def create_order(db: Session, order: schemas.OrderCreate):
+    db_order = models.Order(**order.model_dump())
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+    return db_order

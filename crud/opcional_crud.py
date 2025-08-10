@@ -1,4 +1,5 @@
 import logging
+from typing import List
 from sqlalchemy.orm import Session
 from core import models, schemas
 
@@ -35,3 +36,22 @@ def delete_opcional(db: Session, opcional_id: int):
         db.delete(db_opcional)
         db.commit()
     return db_opcional
+
+def replace_all_opcionais_for_tenant(db: Session, tenant_id: str, opcionais_data: List[dict]):
+    """
+    Deleta todos os opcionais existentes de um tenant e insere os novos.
+    """
+    db.query(models.Opcional).filter(models.Opcional.tenant_id == tenant_id).delete(synchronize_session=False)
+    
+    new_opcionais = []
+    for opc_data in opcionais_data:
+        new_opc = models.Opcional(
+            tenant_id=tenant_id,
+            nome_opcional=opc_data.get('nome'),
+            tipo_opcional=opc_data.get('tipo'),
+            preco_adicional=opc_data.get('preco_adicional')
+        )
+        new_opcionais.append(new_opc)
+        
+    db.bulk_save_objects(new_opcionais)
+    db.commit()

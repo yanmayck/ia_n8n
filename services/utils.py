@@ -1,5 +1,6 @@
 import time
 import logging
+import asyncio
 from functools import wraps
 from google.api_core import exceptions as google_exceptions
 
@@ -28,7 +29,7 @@ def retry_with_exponential_backoff(
                         f"Tentativa {i + 1} de {max_retries}. "
                         f"Esperando {delay:.2f}s antes de tentar novamente."
                     )
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     delay *= exponential_base
             
             logger.error(f"Falha na chamada de '{func.__name__}' após {max_retries} tentativas.")

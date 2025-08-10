@@ -99,98 +99,40 @@
                     </form>
                 </div>
 
-                <div class="form-section" id="product-management-section">
+                <div class="form-section" id="api-key-management-section" style="display: none;">
+                    <h2>Gerenciamento de Chaves de API</h2>
+                    <form id="api-key-form">
+                        <div class="form-grid">
+                            <div>
+                                <label for="api_key_value">Chave de API do Gemini</label>
+                                <input type="password" id="api_key_value" name="api_key_value" required>
+                            </div>
+                            <div>
+                                <label for="key_type">Tipo de Chave</label>
+                                <select id="key_type" name="key_type" required>
+                                    <option value="gratuita">Gratuita (Primária)</option>
+                                    <option value="paga">Paga (Failover)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="priority">Prioridade</label>
+                                <input type="number" id="priority" name="priority" required value="1">
+                            </div>
+                        </div>
+                        <div class="button-group">
+                            <button type="submit">Adicionar Chave</button>
+                        </div>
+                    </form>
+                    <h4>Chaves Cadastradas</h4>
+                    <ul id="api-keys-list" class="item-list"></ul>
+                </div>
+
+                <div class="form-section" id="product-management-section" style="display: none;">
                     <h2>Gerenciamento do Cardápio</h2>
-                    <div class="tab-buttons">
-                        <button class="tab-button active" data-tab="products">Produtos</button>
-                        <button class="tab-button" data-tab="opcionais">Opcionais</button>
-                        <button class="tab-button" data-tab="promocoes">Promoções</button>
-                        <button class="tab-button" data-tab="menu-images">Imagens do Cardápio</button>
+                    <div class="button-group">
+                        <button type="button" id="sync-menu-button">Sincronizar Cardápio com a Plataforma</button>
                     </div>
-                    <div id="tab-content">
-                        <div id="products-tab" class="tab-pane active">
-                            <h3>Produtos</h3>
-                            <form id="product-form">
-                                <input type="hidden" id="product_id" name="id_produto">
-                                <label for="nome_produto">Nome do Produto</label>
-                                <input type="text" id="nome_produto" name="nome_produto" required>
-                                <label for="descricao_produto">Descrição</label>
-                                <textarea id="descricao_produto" name="descricao_produto"></textarea>
-                                <label for="categoria_produto">Categoria</label>
-                                <input type="text" id="categoria_produto" name="categoria_produto">
-                                <label for="preco_base">Preço Base</label>
-                                <input type="number" id="preco_base" name="preco_base" step="0.01" required>
-                                <label for="tempo_preparo_min">Tempo de Preparo (min)</label>
-                                <input type="number" id="tempo_preparo_min" name="tempo_preparo_min">
-                                <label for="disponivel_hoje">Disponível Hoje</label>
-                                <input type="checkbox" id="disponivel_hoje" name="disponivel_hoje">
-                                <div id="product-opcionais-linking"></div>
-                                <div class="button-group">
-                                    <button type="submit">Salvar Produto</button>
-                                    <button type="button" id="cancel-product-edit" class="button">Cancelar</button>
-                                </div>
-                            </form>
-                            <h4>Produtos Existentes</h4>
-                            <ul id="products-list" class="item-list"></ul>
-                        </div>
-                        <div id="opcionais-tab" class="tab-pane">
-                            <h3>Opcionais</h3>
-                            <form id="opcional-form">
-                                <input type="hidden" id="opcional_id" name="id_opcional">
-                                <label for="nome_opcional">Nome do Opcional</label>
-                                <input type="text" id="nome_opcional" name="nome_opcional" required>
-                                <label for="tipo_opcional">Tipo</label>
-                                <input type="text" id="tipo_opcional" name="tipo_opcional">
-                                <label for="preco_adicional">Preço Adicional</label>
-                                <input type="number" id="preco_adicional" name="preco_adicional" step="0.01">
-                                <div class="button-group">
-                                    <button type="submit">Salvar Opcional</button>
-                                    <button type="button" id="cancel-opcional-edit" class="button">Cancelar</button>
-                                </div>
-                            </form>
-                            <h4>Opcionais Existentes</h4>
-                            <ul id="opcionais-list" class="item-list"></ul>
-                        </div>
-                        <div id="promocoes-tab" class="tab-pane">
-                            <h3>Promoções</h3>
-                            <form id="promocao-form">
-                                <input type="hidden" id="promocao_id" name="id_promocao">
-                                <label for="nome_promocao">Nome da Promoção</label>
-                                <input type="text" id="nome_promocao" name="nome_promocao" required>
-                                <label for="descricao_para_ia">Descrição para IA</label>
-                                <textarea id="descricao_para_ia" name="descricao_para_ia"></textarea>
-                                
-                                <label for="condicao_tipo">Tipo de Condição</label>
-                                <select id="condicao_tipo" name="condicao_tipo">
-                                    <option value="">Nenhuma</option>
-                                    <option value="DIA_SEMANA">Dia da Semana</option>
-                                    <option value="VALOR_MINIMO">Valor Mínimo do Pedido</option>
-                                </select>
-                                <div id="condicao_campos"></div>
-
-                                <label for="acao_tipo">Tipo de Ação</label>
-                                <select id="acao_tipo" name="acao_tipo">
-                                    <option value="DESCONTO_PERCENTUAL">Desconto Percentual</option>
-                                    <option value="DESCONTO_FIXO">Desconto Fixo</option>
-                                    <option value="BRINDE">Brinde</option>
-                                </select>
-                                <div id="acao_campos"></div>
-
-                                <div class="button-group">
-                                    <button type="submit">Salvar Promoção</button>
-                                    <button type="button" id="cancel-promocao-edit" class="button">Cancelar</button>
-                                </div>
-                            </form>
-                            <h4>Promoções Existentes</h4>
-                            <ul id="promocoes-list" class="item-list"></ul>
-                        </div>
-                        <div id="menu-images-tab" class="tab-pane">
-                            <h3>Imagens do Cardápio</h3>
-                            <input type="file" id="menu_images_upload" name="menu_images_upload" accept="image/*" multiple disabled>
-                            <button id="upload-menu-images" class="button" disabled>Upload Imagens</button>
-                            <div id="uploaded-menu-images-preview"><p>Selecione um cliente para gerenciar.</p></div>
-                        </div>
-                    </div>
+                    <div id="uploaded-menu-images-preview"><p>Selecione um cliente para gerenciar.</p></div>
                 </div>
 
                 <div class="form-section">
@@ -218,6 +160,6 @@
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script type="module" src="/static/js/main.js" defer></script>
 </body>
 </html>

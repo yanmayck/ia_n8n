@@ -62,24 +62,77 @@ async def delete_product(tenant_id: str, product_id: int, db: Session = Depends(
     return {"message": "Produto deletado com sucesso."}
 
 # --- Rotas para Ligar/Desligar Opcionais ---
-@router.post("/products/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
-def link_opcional_to_product_route(product_id: int, opcional_id: int, db: Session = Depends(get_db)):
-    logger.info(f"Ligando opcional {opcional_id} ao produto {product_id}")
+@router.post("/products/{tenant_id}/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def link_opcional_to_product_route(tenant_id: str, product_id: int, opcional_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Ligando opcional {opcional_id} ao produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+    
     updated_product = product_crud.link_opcional_to_product(db, product_id, opcional_id)
     if not updated_product:
         raise HTTPException(status_code=404, detail="Produto ou opcional não encontrado.")
     return updated_product
 
-@router.delete("/products/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
-def unlink_opcional_from_product_route(product_id: int, opcional_id: int, db: Session = Depends(get_db)):
-    logger.info(f"Desligando opcional {opcional_id} do produto {product_id}")
+@router.delete("/products/{tenant_id}/{product_id}/opcionais/{opcional_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def unlink_opcional_from_product_route(tenant_id: str, product_id: int, opcional_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Desligando opcional {opcional_id} do produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+
     updated_product = product_crud.unlink_opcional_from_product(db, product_id, opcional_id)
     if not updated_product:
         raise HTTPException(status_code=404, detail="Produto ou opcional não encontrado, ou ligação inexistente.")
     return updated_product
 
-@router.get("/products/{product_id}/opcionais", response_model=List[schemas.Opcional], tags=["Products"], dependencies=[Depends(get_current_user)])
-def get_linked_opcionais_route(product_id: int, db: Session = Depends(get_db)):
-    logger.info(f"Buscando opcionais ligados ao produto {product_id}")
+@router.get("/products/{tenant_id}/{product_id}/opcionais", response_model=List[schemas.Opcional], tags=["Products"], dependencies=[Depends(get_current_user)])
+def get_linked_opcionais_route(tenant_id: str, product_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Buscando opcionais ligados ao produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+
     opcionais = product_crud.get_linked_opcionais(db, product_id)
     return opcionais
+
+# --- Rotas para Ligar/Desligar Promoções ---
+@router.post("/products/{tenant_id}/{product_id}/promocoes/{promocao_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def link_promocao_to_product_route(tenant_id: str, product_id: int, promocao_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Ligando promoção {promocao_id} ao produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+
+    updated_product = product_crud.link_promocao_to_product(db, product_id, promocao_id)
+    if not updated_product:
+        raise HTTPException(status_code=404, detail="Produto ou promoção não encontrada.")
+    return updated_product
+
+@router.delete("/products/{tenant_id}/{product_id}/promocoes/{promocao_id}", tags=["Products"], dependencies=[Depends(get_current_user)])
+def unlink_promocao_from_product_route(tenant_id: str, product_id: int, promocao_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Desligando promoção {promocao_id} do produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+
+    updated_product = product_crud.unlink_promocao_from_product(db, product_id, promocao_id)
+    if not updated_product:
+        raise HTTPException(status_code=404, detail="Produto ou promoção não encontrada, ou ligação inexistente.")
+    return updated_product
+
+@router.get("/products/{tenant_id}/{product_id}/promocoes", response_model=List[schemas.Promocao], tags=["Products"], dependencies=[Depends(get_current_user)])
+def get_linked_promocoes_route(tenant_id: str, product_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Buscando promoções ligadas ao produto {product_id} para o tenant {tenant_id}")
+    # Adicionar verificação de segurança
+    product = product_crud.get_product(db, product_id)
+    if not product or product.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Produto não encontrado para este tenant.")
+
+    promocoes = product_crud.get_linked_promocoes(db, product_id)
+    return promocoes

@@ -57,10 +57,28 @@ async def create_tenant(
         freight_config=freight_config
     )
     
-    tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja)
-    
-    # Carregar dados no PGVector (agora sem o df de produtos)
-    await agent_manager.load_data_to_vector_db(db, tenant_id)
+    tenant = None
+    try:
+        logger.info(f"Iniciando criação do tenant: {tenant_id}")
+        tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja)
+        logger.info(f"Tenant {tenant_id} criado no banco de dados, iniciando vetorização.")
+        
+        await agent_manager.load_data_to_vector_db(db, tenant_id)
+        logger.info(f"Vetorização para o tenant {tenant_id} concluída com sucesso.")
+
+    except ValueError as e:
+        logger.error(f"Erro de valor ao criar tenant {tenant_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error(f"Falha crítica durante a criação ou vetorização do tenant {tenant_id}: {e}", exc_info=True)
+        if tenant: # Se o tenant foi criado mas a vetorização falhou
+            logger.warning(f"Iniciando rollback para o tenant {tenant_id} devido a erro na vetorização.")
+            try:
+                tenant_crud.delete_tenant(db, tenant_id)
+                logger.info(f"Rollback do tenant {tenant_id} concluído com sucesso.")
+            except Exception as del_e:
+                logger.critical(f"FALHA CRÍTICA NO ROLLBACK do tenant {tenant_id}. Erro: {del_e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Falha ao processar o cadastro do cliente: {e}")
 
     return tenant
 
@@ -183,6 +201,39 @@ async def get_loja_txt(tenant_id: str, db: Session = Depends(get_db)):
     if not tenant or not tenant.config_ai:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Informações da loja não encontradas.")
     return PlainTextResponse(content=tenant.config_ai, media_type="text/plain")
+
+@router.post("/tenants/{tenant_id}/sync-menu", tags=["Tenants"], dependencies=[Depends(get_current_user)])
+async def sync_menu_from_platform(tenant_id: str, db: Session = Depends(get_db)):
+    tenant = tenant_crud.get_tenant_by_id(db, tenant_id=tenant_id)
+    if not tenant or not tenant.url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Cliente não encontrado ou URL da plataforma de gestão não configurada."
+        )
+
+    try:
+        sync_url = f"{tenant.url}/api/menu/{tenant_id}"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(sync_url)
+            response.raise_for_status()
+            menu_data = response.json()
+
+        # Limpar e repovoar os dados
+        await run_in_threadpool(product_crud.replace_all_products_for_tenant, db, tenant_id, menu_data.get('produtos', []))
+        await run_in_threadpool(opcional_crud.replace_all_opcionais_for_tenant, db, tenant_id, menu_data.get('opcionais', []))
+        await run_in_threadpool(promocao_crud.replace_all_promocoes_for_tenant, db, tenant_id, menu_data.get('promocoes', []))
+
+        # Re-vetorizar os dados
+        await agent_manager.load_data_to_vector_db(db, tenant_id)
+
+        return {"message": "Sincronização concluída com sucesso!"}
+
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Erro ao conectar com a plataforma de gestão: {exc}")
+    except Exception as e:
+        logger.error(f"Erro inesperado durante a sincronização: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Erro inesperado durante a sincronização: {e}")
 
 # --- Rotas para Imagens de Cardápio ---
 from typing import List

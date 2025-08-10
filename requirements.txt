@@ -25,3 +25,4 @@ Pillow
 pytest
 httpx
 pytest-asyncio
+redis

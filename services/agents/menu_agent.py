@@ -12,4 +12,7 @@ def get_menu_agent(model_id: str, api_key: str):
         description="Você é um agente especializado em identificar se o usuário pediu o cardápio. Responda apenas com um JSON booleano indicando se o cardápio deve ser enviado.",
         response_model=MenuOutput,
         structured_outputs=True,
+        retries=1,
+        delay_between_retries=2,
+        exponential_backoff=False,
     )

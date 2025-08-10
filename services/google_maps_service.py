@@ -19,10 +19,19 @@ async def calcular_frete_google_maps_async(
         "units": "metric"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        response.raise_for_status()  # Levanta uma exceção para status de erro HTTP
-        data = response.json()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client: # Adicionado timeout de 30s
+            logger.info(f"MAPS_API: Enviando requisição para a API do Google Maps. URL: {url}, Params: {params}")
+            response = await client.get(url, params=params)
+            logger.info(f"MAPS_API: Resposta recebida da API do Google Maps com status: {response.status_code}")
+            response.raise_for_status()  # Levanta uma exceção para status de erro HTTP
+            data = response.json()
+    except KeyboardInterrupt:
+        logger.critical("MAPS_API: EXECUÇÃO INTERROMPIDA (KeyboardInterrupt) durante a chamada para a API do Google Maps.")
+        raise
+    except httpx.TimeoutException:
+        logger.error("MAPS_API: Timeout (30s) atingido ao chamar a API do Google Maps. A API não respondeu a tempo.")
+        raise Exception("Timeout ao calcular frete: a API do Google Maps demorou muito para responder.")
 
     if data["status"] == "OK" and data["rows"][0]["elements"][0]["status"] == "OK":
         distancia_metros = data["rows"][0]["elements"][0]["distance"]["value"]

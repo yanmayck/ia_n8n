@@ -1,12 +1,21 @@
-from sqlalchemy.orm import Session
+import logging
+from sqlalchemy.orm import Session, joinedload
 from core import models, schemas
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 def get_tenant_by_id(db: Session, tenant_id: str):
-    return db.query(models.Tenant).filter(models.Tenant.tenant_id == tenant_id).first()
+    logger.info(f"Buscando tenant no DB com ID: {tenant_id} e carregando personalidade associada.")
+    return db.query(models.Tenant).options(joinedload(models.Tenant.personality)).filter(models.Tenant.tenant_id == tenant_id).first()
 
 def create_tenant(db: Session, tenant: schemas.TenantCreate, conteudo_loja: str):
     from .personality_crud import create_personality, get_personality_by_name
+
+    # Validação de ID duplicado
+    existing_tenant = get_tenant_by_id(db, tenant_id=tenant.tenant_id)
+    if existing_tenant:
+        raise ValueError(f"Cliente com o ID '{tenant.tenant_id}' já está cadastrado.")
 
     db_personality = get_personality_by_name(db, name=tenant.ia_personality)
     if db_personality:
@@ -22,7 +31,6 @@ def create_tenant(db: Session, tenant: schemas.TenantCreate, conteudo_loja: str)
         tenant_id=tenant.tenant_id,
         nome_loja=tenant.nome_loja,
         config_ai=conteudo_loja,
-        evolution_api_key=None,
         is_active=True,
         personality=db_personality,
         endereco=tenant.endereco,
@@ -64,7 +72,7 @@ def create_tenant_instancia(db: Session, tenant_data: schemas.TenantInstancia):
     return db_tenant
 
 def get_all_tenants(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Tenant).offset(skip).limit(limit).all()
+    return db.query(models.Tenant).options(joinedload(models.Tenant.personality)).offset(skip).limit(limit).all()
 
 def update_tenant(db: Session, tenant_id: str, tenant_data: schemas.TenantUpdateSchema, conteudo_loja: Optional[str] = None):
     from .personality_crud import create_personality, get_personality_by_name, update_personality
@@ -130,5 +138,5 @@ def get_tenant_by_user_phone(db: Session, user_phone: str):
         personality = db.query(models.Personality).filter(models.Personality.id == interaction.personality_id).first()
         if personality:
             # Corrigido para buscar pelo ID da personalidade, não pelo nome
-            return db.query(models.Tenant).filter(models.Tenant.personality_id == personality.id).first()
+            return db.query(models.Tenant).options(joinedload(models.Tenant.personality)).filter(models.Tenant.personality_id == personality.id).first()
     return None

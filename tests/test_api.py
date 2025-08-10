@@ -48,4 +48,36 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
     assert data["nome_loja"] == "API Test Store"
     assert "id" in data
 
+@patch('services.agent_manager.load_data_to_vector_db')
+def test_create_duplicate_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_session: Session):
+    # Obter token de autenticação
+    login_data = {"password": os.getenv("ADMIN_PASSWORD")}
+    response = client.post("/login", data=login_data)
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Dados do formulário para a requisição
+    form_data = {
+        'tenant_id': 'duplicate_test_tenant',
+        'nome_loja': 'Duplicate Test Store',
+        'ia_personality': 'test_personality',
+        'ai_prompt_description': 'test prompt',
+        'endereco': '123 Test St',
+        'cep': '12345-678',
+        'latitude': -23.550520,
+        'longitude': -46.633308
+    }
+    loja_txt_content = b"Informacoes da loja."
+    files = {'loja_txt': ('loja.txt', loja_txt_content, 'text/plain')}
+
+    # Primeira requisição (deve ser bem-sucedida)
+    response1 = client.post("/tenants/", data=form_data, files=files, headers=headers)
+    assert response1.status_code == 200
+
+    # Segunda requisição com o mesmo tenant_id (deve falhar)
+    response2 = client.post("/tenants/", data=form_data, files=files, headers=headers)
+    assert response2.status_code == 400
+    assert "já está cadastrado" in response2.json()["detail"]
+
 # Adicione mais testes para os outros endpoints da API aqui...

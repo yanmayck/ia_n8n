@@ -6,26 +6,40 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# --- CARREGAR O ARQUIVO DE AMBIENTE DE TESTE PRIMEIRO ---
-load_dotenv(dotenv_path=".env.test")
+# --- CONFIGURAÇÃO DO AMBIENTE DE TESTE ---
+# Este bloco é executado ANTES de qualquer outra importação ou fixture.
 
-# Adiciona o diretório raiz ao path para encontrar os módulos
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# 1. Define o diretório raiz do projeto (ia_n8n)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
+# 2. Adiciona a raiz ao sys.path para que as importações funcionem
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# 3. Carrega as variáveis de ambiente do .env.test
+# O pytest, por padrão, executa a partir da raiz do projeto, então o caminho é relativo a ela.
+dotenv_path = os.path.join(project_root, '.env.test')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    # Fallback se o .env.test não for encontrado no local esperado
+    # Isso pode acontecer dependendo de como o pytest é invocado.
+    # Tentamos carregar a partir do diretório atual, que deve ser a raiz do projeto.
+    load_dotenv(dotenv_path=".env.test")
+
+
+# 4. AGORA, com o ambiente configurado, podemos importar os módulos da aplicação
 from core.database import Base
-from alembic.config import Config
-from alembic import command
-
-# Importa Base e get_db DEPOIS de definir a DATABASE_URL
 from api.dependencies import get_db
 from api.main import app
 from core import models, schemas
 from crud import tenant_crud
+from services import agent_manager
 
 # --- USAR A URL DE TESTE ---
 TEST_DATABASE_URL = os.getenv("DATABASE_URL")
 if not TEST_DATABASE_URL:
-    raise ValueError("DATABASE_URL não encontrada no arquivo .env.test. Verifique o caminho.")
+    raise ValueError("DATABASE_URL não encontrada no arquivo .env.test. Verifique o caminho e a configuração.")
 
 # Engine é criado uma vez para toda a sessão de testes
 engine = create_engine(TEST_DATABASE_URL)
@@ -33,18 +47,44 @@ engine = create_engine(TEST_DATABASE_URL)
 # Session factory
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Cria as tabelas uma vez no início da sessão de testes
+# --- FIXTURES DO PYTEST ---
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
-    # Garante que o banco de dados esteja limpo antes de iniciar e após a execução
-    Base.metadata.drop_all(bind=engine)
-    # Cria o schema do banco de dados com base nos modelos atuais
-    Base.metadata.create_all(bind=engine)
+    """
+    Cria as tabelas uma vez no início da sessão de testes e as derruba no final.
+    """
+    # Garante que o engine esteja limpo antes de qualquer operação de DDL
+    # Removido engine.dispose() aqui, pois pode interferir com o drop_all
     
-    yield # Os testes rodam aqui
-    
-    # Limpa o banco de dados após a sessão de testes
-    Base.metadata.drop_all(bind=engine)
+    # Usa uma conexão isolada para drop_all e create_all
+    connection = None
+    try:
+        connection = engine.connect()
+        Base.metadata.drop_all(bind=connection)
+        Base.metadata.create_all(bind=connection)
+    finally:
+        if connection:
+            connection.close()
+
+    yield
+    # Limpa o banco novamente após todos os testes
+    connection = None
+    try:
+        connection = engine.connect()
+        Base.metadata.drop_all(bind=connection)
+    finally:
+        if connection:
+            connection.close()
+    engine.dispose() # Limpeza final do engine
+
+import logging
+
+# ... (o resto das importações)
+
+logger = logging.getLogger(__name__)
+
+# ... (o resto do código até a fixture)
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -52,13 +92,25 @@ def db_session():
     Cria uma nova sessão de banco de dados para cada teste, dentro de uma transação.
     A transação é revertida no final do teste, isolando-o.
     """
+    logger.info("FIXTURE_TRACE: 1. Entrando na fixture db_session.")
     connection = engine.connect()
+    logger.info("FIXTURE_TRACE: 2. Conexão com o engine estabelecida.")
     transaction = connection.begin()
+    logger.info("FIXTURE_TRACE: 3. Transação iniciada.")
     session = TestingSessionLocal(bind=connection)
-    yield session
-    session.close()
-    transaction.rollback()
-    connection.close()
+    logger.info("FIXTURE_TRACE: 4. Sessão de teste criada e pronta para ser entregue (yield).")
+    
+    try:
+        yield session
+    finally:
+        logger.info("FIXTURE_TRACE: 5. Teste concluído, iniciando limpeza da fixture.")
+        session.close()
+        logger.info("FIXTURE_TRACE: 6. Sessão fechada.")
+        transaction.rollback()
+        logger.info("FIXTURE_TRACE: 7. Transação revertida (rollback).")
+        connection.close()
+        logger.info("FIXTURE_TRACE: 8. Conexão com o engine fechada. Fim da fixture.")
+
 
 @pytest.fixture(scope="function")
 def client(db_session: Session):
@@ -66,6 +118,9 @@ def client(db_session: Session):
     Cria um cliente de teste para a API e sobrescreve a dependência do DB
     para usar a sessão de teste transacional.
     """
+    # Muda para o diretório raiz do projeto para que o StaticFiles encontre a pasta 'templates'
+    os.chdir(project_root)
+    
     def override_get_db():
         yield db_session
 
@@ -74,8 +129,8 @@ def client(db_session: Session):
     del app.dependency_overrides[get_db]
 
 @pytest.fixture(scope="function")
-def test_tenant(db_session: Session):
-    """Cria um tenant de teste para ser usado nos testes."""
+async def test_tenant(db_session: Session):
+    """Cria um tenant de teste e carrega seus dados no VectorDB."""
     personality_data = schemas.PersonalityCreate(name="test_personality_for_tenant", prompt="Prompt de teste.")
     db_personality = models.Personality(name=personality_data.name, prompt=personality_data.prompt)
     db_session.add(db_personality)
@@ -92,7 +147,16 @@ def test_tenant(db_session: Session):
         latitude=-23.550520,
         longitude=-46.633308,
         url="http://test.com",
-        freight_config="{}"
+        freight_config='{"type": "FIXED", "price": 12.50}'
     )
-    tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja="Conteúdo de loja de teste")
+    conteudo_loja_para_teste = """
+    Informações da loja de teste:
+    Nossa pizzaria funciona todos os dias das 11h às 23h.
+    Oferecemos pizzas deliciosas e promoções incríveis.
+    """
+    tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja=conteudo_loja_para_teste)
+    
+    # Carrega os dados do tenant no banco de vetores
+    await agent_manager.load_data_to_vector_db(db_session, tenant.tenant_id)
+    
     return tenant

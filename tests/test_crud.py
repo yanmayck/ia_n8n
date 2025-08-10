@@ -261,3 +261,52 @@ def test_delete_promocao(db_session: Session):
     promocao_crud.delete_promocao(db_session, created_promocao.id_promocao)
     assert promocao_crud.get_promocao(db_session, created_promocao.id_promocao) is None
 
+def test_link_and_unlink_promocao_to_product(db_session: Session):
+    # 1. Setup: Create tenant, product, and promotion
+    tenant_crud.create_tenant(db_session, schemas.TenantCreate(tenant_id="promo_link_tenant", nome_loja="Promo Link Store", ia_personality="p", ai_prompt_description="d", endereco="e", cep="c", latitude=0.0, longitude=0.0), "config")
+    product_data = schemas.ProductCreate(nome_produto="Product for Promo", preco_base=50.0)
+    product = product_crud.create_product(db_session, product_data, "promo_link_tenant")
+    
+    promocao_data = schemas.PromocaoCreate(nome_promocao="Linkable Promo", is_ativa=True)
+    promocao = promocao_crud.create_promocao(db_session, promocao_data, "promo_link_tenant")
+
+    # 2. Link Promotion
+    product_crud.link_promocao_to_product(db_session, product.id_produto, promocao.id_promocao)
+    
+    # 3. Verify Link
+    db_session.refresh(product)
+    linked_promos = product.promocoes
+    assert len(linked_promos) == 1
+    assert linked_promos[0].id_promocao == promocao.id_promocao
+
+    # 4. Unlink Promotion
+    product_crud.unlink_promocao_from_product(db_session, product.id_produto, promocao.id_promocao)
+
+    # 5. Verify Unlink
+    db_session.refresh(product)
+    assert len(product.promocoes) == 0
+
+def test_link_and_unlink_promocao_to_product(db_session: Session):
+    # 1. Setup: Create tenant, product, and promotion
+    tenant_crud.create_tenant(db_session, schemas.TenantCreate(tenant_id="promo_link_tenant", nome_loja="Promo Link Store", ia_personality="p", ai_prompt_description="d", endereco="e", cep="c", latitude=0.0, longitude=0.0), "config")
+    product_data = schemas.ProductCreate(nome_produto="Product for Promo", preco_base=50.0)
+    product = product_crud.create_product(db_session, product_data, "promo_link_tenant")
+    
+    promocao_data = schemas.PromocaoCreate(nome_promocao="Linkable Promo", is_ativa=True)
+    promocao = promocao_crud.create_promocao(db_session, promocao_data, "promo_link_tenant")
+
+    # 2. Link Promotion
+    product_crud.link_promocao_to_product(db_session, product.id_produto, promocao.id_promocao)
+    
+    # 3. Verify Link
+    db_session.refresh(product)
+    linked_promos = product.promocoes
+    assert len(linked_promos) == 1
+    assert linked_promos[0].id_promocao == promocao.id_promocao
+
+    # 4. Unlink Promotion
+    product_crud.unlink_promocao_from_product(db_session, product.id_produto, promocao.id_promocao)
+
+    # 5. Verify Unlink
+    db_session.refresh(product)
+    assert len(product.promocoes) == 0

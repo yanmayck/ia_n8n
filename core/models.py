@@ -34,6 +34,19 @@ class Tenant(Base):
     
     personality_id = Column(Integer, ForeignKey("personalities.id"))
     personality = relationship("Personality")
+    api_keys = relationship("TenantAPIKey", back_populates="tenant", cascade="all, delete-orphan")
+
+class TenantAPIKey(Base):
+    __tablename__ = "tenant_api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.tenant_id"), nullable=False)
+    api_key_value = Column(String, nullable=False)
+    key_type = Column(String, nullable=False)  # 'gratuita' ou 'paga'
+    priority = Column(Integer, nullable=False, default=1)
+    is_active = Column(Boolean, default=True)
+
+    tenant = relationship("Tenant", back_populates="api_keys")
 
 class MenuImage(Base):
     __tablename__ = "menu_images"
