@@ -19,10 +19,10 @@ class VectorDBManager:
         logger.debug(f"VectorDBManager: Inicializando para a coleção '{self.collection_name}'")
         
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-        DATABASE_URL = os.getenv("DIRECT_DATABASE_URL")
+        DATABASE_URL = os.getenv("DATABASE_URL")
 
         if not DATABASE_URL or not GEMINI_API_KEY:
-            raise ValueError("Variáveis de ambiente DIRECT_DATABASE_URL e GEMINI_API_KEY devem ser configuradas.")
+            raise ValueError("Variáveis de ambiente DATABASE_URL e GEMINI_API_KEY devem ser configuradas.")
 
         embedder = GeminiEmbedder(api_key=GEMINI_API_KEY)
         
