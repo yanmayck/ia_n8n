@@ -49,34 +49,27 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 # --- FIXTURES DO PYTEST ---
 
+from alembic.config import Config
+from alembic import command
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     """
-    Cria as tabelas uma vez no início da sessão de testes e as derruba no final.
+    Aplica as migrações do Alembic no início da sessão de testes e as reverte no final.
     """
-    # Garante que o engine esteja limpo antes de qualquer operação de DDL
-    # Removido engine.dispose() aqui, pois pode interferir com o drop_all
-    
-    # Usa uma conexão isolada para drop_all e create_all
-    connection = None
-    try:
-        connection = engine.connect()
-        Base.metadata.drop_all(bind=connection)
-        Base.metadata.create_all(bind=connection)
-    finally:
-        if connection:
-            connection.close()
+    alembic_cfg = Config(os.path.join(project_root, "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", os.path.join(project_root, "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+
+    # Garante que o banco de dados esteja limpo e atualizado
+    command.downgrade(alembic_cfg, "base")
+    command.upgrade(alembic_cfg, "head")
 
     yield
-    # Limpa o banco novamente após todos os testes
-    connection = None
-    try:
-        connection = engine.connect()
-        Base.metadata.drop_all(bind=connection)
-    finally:
-        if connection:
-            connection.close()
-    engine.dispose() # Limpeza final do engine
+
+    # Limpa o banco de dados após a execução de todos os testes
+    command.downgrade(alembic_cfg, "base")
+    engine.dispose()
 
 import logging
 

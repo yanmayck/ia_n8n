@@ -1,6 +1,7 @@
 import logging
 from logging.config import dictConfig
 import os
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from starlette.staticfiles import StaticFiles
@@ -25,7 +26,6 @@ if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("A variável de ambiente GEMINI_API_KEY não está configurada.")
 
 # A linha abaixo foi removida para que o Alembic seja a única fonte da verdade para o schema.
-# # A linha abaixo foi removida para que o Alembic seja a única fonte da verdade para o schema.
 # models.Base.metadata.create_all(bind=engine)
 
 from contextlib import asynccontextmanager
@@ -37,13 +37,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="API de Chatbot com Equipe de IAs (Agno)",
-    description="Processa mensagens multimodais usando uma equipe de agentes de IA.",
+    description="Processa mensagens multimodais usando uma equipe de IA.",
     version="4.0.0",
     lifespan=lifespan
 )
 
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="templates"), name="static")
+# --- CORREÇÃO FINAL E PRONTA PARA PRODUÇÃO ---
+
+# 1. Define o caminho base para a pasta 'ia_n8n', que contém este módulo 'api'
+#    Path(__file__) -> /.../ia_n8n/api/main.py
+#    .parent        -> /.../ia_n8n/api/
+#    .parent        -> /.../ia_n8n/
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 2. Usa o caminho absoluto para encontrar a pasta 'templates' dentro de 'ia_n8n'
+templates_dir = BASE_DIR / "templates"
+templates = Jinja2Templates(directory=str(templates_dir))
+app.mount("/static", StaticFiles(directory=str(templates_dir)), name="static")
+
 
 # --- Rota da Interface e Inclusão dos Roteadores ---
 
