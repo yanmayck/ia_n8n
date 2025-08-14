@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Union
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
+from thefuzz.fuzz import token_set_ratio # Corrigido para importar diretamente a função
 
 from agno.agent import Agent, RunResponse
 from agno.models.google import Gemini
@@ -30,7 +31,8 @@ from services.agents.receptionist_agent import get_receptionist_agent
 from services.agents.order_taking_agent import get_order_taking_agent
 from services.agents.response_formulation_agent import get_response_formulation_agent
 from services.agents.file_understanding_agent import get_file_understanding_agent
-from services.tools import ferramenta_busca_avancada_produtos, geocode_address, freight_calculator
+from services.tools import ferramenta_busca_avancada_produtos, geocode_address, freight_calculator, get_contextual_suggestions_tool, get_applicable_promotions_tool
+from services.product_service import ProductService
 from services.state_manager import state_manager
 
 
@@ -82,13 +84,10 @@ class OrchestratorAgent:
         self.human_handoff_step = Step(name="human_handoff", executor=self._handle_human_handoff_executor)
         self.menu_step = Step(name="menu", executor=self._handle_menu_request_executor)
         self.pass_through_step = Step(name="pass_through", executor=self._pass_through_executor)
-        
         self.geocode_step = Step(name="geocode", executor=self._execute_geocode_if_needed)
         self.freight_calculation_step = Step(name="freight_calculation", executor=self._execute_freight_calculation)
-        
-        # Novo passo para busca em RAG
         self.rag_search_step = Step(name="rag_search", executor=self._execute_rag_search)
-
+        self.suggestion_gathering_step = Step(name="suggestion_gathering", executor=self._suggestion_gathering_executor)
         self.response_formulation_step = Step(name="response_formulation", agent=self.response_formulation_agent)
 
         # Main Router
@@ -100,7 +99,7 @@ class OrchestratorAgent:
                 self.product_search_step,
                 self.human_handoff_step,
                 self.menu_step,
-                self.rag_search_step, # Adicionado RAG
+                self.rag_search_step,
                 self.pass_through_step,
                 self.geocode_step,
                 self.freight_calculation_step
@@ -113,9 +112,54 @@ class OrchestratorAgent:
             steps=[
                 self.receptionist_step,
                 self.main_router,
+                self.suggestion_gathering_step,
                 self.response_formulation_step,
             ]
         )
+
+    async def _suggestion_gathering_executor(self, step_input: StepInput) -> StepOutput:
+        logger.info("EXECUTOR: Executando _suggestion_gathering_executor para encontrar upsells.")
+        
+        search_results = step_input.additional_data.get("search_results")
+        
+        if not search_results or not isinstance(search_results, list) or len(search_results) == 0:
+            logger.info("Nenhum produto encontrado no contexto, pulando a busca por sugestões.")
+            return StepOutput(content="Nenhuma sugestão para adicionar.")
+
+        product_context = search_results[0]
+        product_id = product_context.get("id_produto")
+
+        if not product_id:
+            logger.warning("Produto encontrado nos resultados, mas sem ID. Pulando sugestões.")
+            return StepOutput(content="Produto sem ID, sem sugestões.")
+
+        suggestions_json, promotions_json = await asyncio.gather(
+            run_in_threadpool(get_contextual_suggestions_tool.entrypoint, product_id=product_id, agent=self),
+            run_in_threadpool(get_applicable_promotions_tool.entrypoint, tenant_id=self.tenant_id, order_state_json="{}", agent=self)
+        )
+        
+        try:
+            suggestions = json.loads(suggestions_json)
+            promotions = json.loads(promotions_json)
+        except json.JSONDecodeError:
+            suggestions = []
+            promotions = []
+            logger.error("Erro ao decodificar JSON das ferramentas de sugestão/promoção.")
+
+        step_input.additional_data["suggestions"] = suggestions
+        step_input.additional_data["promotions"] = promotions
+        
+        logger.info(f"Encontradas {len(suggestions)} sugestões e {len(promotions)} promoções.")
+        
+        return StepOutput(content="Sugestões e promoções coletadas.")
+
+    async def _handle_menu_request_executor(self, step_input: StepInput) -> StepOutput:
+        logger.info("EXECUTOR: Executando _handle_menu_request_executor.")
+        
+        step_input.additional_data['send_menu_requested'] = True
+        canned_response = "Claro! Aqui está o nosso cardápio."
+        step_input.additional_data["rag_context"] = canned_response
+        return StepOutput(content=canned_response)
 
     async def _execute_geocode_if_needed(self, step_input: StepInput) -> StepOutput:
         logger.info("EXECUTOR: Verificando necessidade de geocodificação.")
@@ -127,11 +171,9 @@ class OrchestratorAgent:
 
         receptionist_output = additional_data.get('receptionist_output')
         address = None
-        # Correção: Extrai o endereço de 'detalhes' dentro da primeira tarefa, se for uma AnaliseDeIntencao
         if isinstance(receptionist_output, schemas.AnaliseDeIntencao) and receptionist_output.tarefas:
             address = receptionist_output.tarefas[0].detalhes
         
-        # Fallback para a mensagem original se o endereço não for encontrado nos detalhes
         if not address:
             address = step_input.message
         
@@ -140,7 +182,6 @@ class OrchestratorAgent:
             return StepOutput(content=json.dumps({"error": "address_required"}))
         
         logger.info(f"Executando geocodificação para o endereço: {address}")
-        # Correção: Chama a função original da ferramenta usando .entrypoint
         coords_json = await geocode_address.entrypoint(address=address)
         coords = json.loads(coords_json)
         
@@ -172,11 +213,7 @@ class OrchestratorAgent:
         tenant_id = additional_data.get("tenant_id")
 
         if not all([client_lat, client_lng, tenant_id]):
-            missing = [k for k, v in {
-                "client_latitude": client_lat, 
-                "client_longitude": client_lng, 
-                "tenant_id": tenant_id
-            }.items() if not v]
+            missing = [k for k, v in {"client_latitude": client_lat, "client_longitude": client_lng, "tenant_id": tenant_id}.items() if not v]
             logger.warning(f"Dados insuficientes para calcular o frete. Faltando: {', '.join(missing)}")
             return StepOutput(content=json.dumps({"error": "address_required", "message": f"Faltando: {', '.join(missing)}"}))
 
@@ -211,60 +248,170 @@ class OrchestratorAgent:
         return StepOutput(content={})
 
     async def _handle_product_search_executor(self, step_input: StepInput) -> StepOutput:
-        logger.info("ORCHESTRATOR: Executing _handle_product_search_executor.")
-        busca_data: schemas.BuscaDeProduto = step_input.additional_data['receptionist_output']
-        search_results_json = await ferramenta_busca_avancada_produtos(query_data=busca_data, tenant_id=self.tenant_id, agent=self)
-        step_input.additional_data["search_results"] = json.loads(search_results_json)
+        logger.info("EXECUTOR: Executando _handle_product_search_executor com ProductService (Lógica Aprimorada).")
+        receptionist_output = step_input.additional_data.get('receptionist_output')
+
+        if not isinstance(receptionist_output, schemas.BuscaDeProduto):
+            logger.warning(f"Input para _handle_product_search_executor não era BuscaDeProduto, mas {type(receptionist_output)}. Pulando busca.")
+            step_input.additional_data["search_results"] = []
+            return StepOutput(content={})
+
+        product_service = ProductService(db=self.db, tenant_id=self.tenant_id)
+        found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=receptionist_output)
+
+        if found_products:
+            logger.info(f"Busca de produto encontrou {len(found_products)} resultado(s).")
+            search_results = [{
+                "id_produto": p.id_produto,
+                "nome_produto": p.nome_produto,
+                "descricao_produto": p.descricao_produto,
+                "preco_base": p.preco_base
+            } for p in found_products]
+            step_input.additional_data["search_results"] = search_results
+        else:
+            logger.info(f"Nenhum produto encontrado para os critérios: '{receptionist_output.model_dump_json()}'")
+            step_input.additional_data["search_results"] = []
+
         return StepOutput(content={})
 
     async def _handle_order_taking_executor(self, step_input: StepInput) -> StepOutput:
-        logger.info("ORCHESTRATOR: Executing _handle_order_taking_executor.")
-        order_state = step_input.additional_data.get("order_state")
-        message = step_input.additional_data.get("original_message")
-        
-        order_output_response = await self.order_taking_agent.arun(message)
-        order_output = order_output_response.content if order_output_response else None
-        
-        if order_output and hasattr(order_output, 'items') and order_output.items:
-            order_state.items.extend(order_output.items)
-        if order_output and hasattr(order_output, 'address') and order_output.address:
-            address_schema = schemas.UserAddressCreate(user_phone=self.user_id, tenant_id=self.tenant_id, address_text=order_output.address)
-            await run_in_threadpool(user_address_crud.create_or_update_user_address, self.db, address=address_schema)
+        logger.info("EXECUTOR: Executing _handle_order_taking_executor com ProductService (Lógica Aprimorada).")
+        order_state: OrderState = step_input.additional_data.get("order_state")
+        receptionist_output: AnaliseDeIntencao = step_input.additional_data.get('receptionist_output')
+
+        if not isinstance(receptionist_output, AnaliseDeIntencao) or not receptionist_output.tarefas:
+            logger.warning("Input para order_taking_executor não é uma tarefa válida.")
+            return StepOutput(content={})
+
+        task = receptionist_output.tarefas[0]
+        product_service = ProductService(db=self.db, tenant_id=self.tenant_id)
+
+        if task.tipo_tarefa == 'adicionar_item':
+            if not task.detalhes:
+                logger.warning("Tentativa de adicionar item sem detalhes (nome do produto).")
+                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja adicionar."
+                return StepOutput(content="Clarificação necessária.")
+
+            # --- NOVO: Usar find_product_filtered e lidar com ambiguidade ---
+            # Converte os detalhes da tarefa em um schema BuscaDeProduto para a busca filtrada
+            search_criteria = schemas.BuscaDeProduto(termos_gerais=task.detalhes.split())
+            found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=search_criteria)
+
+            if len(found_products) == 1:
+                found_product = found_products[0]
+                logger.info(f"Produto encontrado via ProductService: {found_product.nome_produto}. Adicionando ao pedido.")
+                order_item = schemas.OrderItem(
+                    product_id=found_product.id_produto,
+                    product_name=found_product.nome_produto,
+                    quantity=task.quantidade or 1,
+                    unit_price=found_product.preco_base,
+                    total_price=(found_product.preco_base * (task.quantidade or 1))
+                )
+                order_state.items.append(order_item)
+                step_input.additional_data["product_added_successfully"] = True
+                step_input.additional_data["response_text_override"] = f"Adicionado {found_product.nome_produto} ao seu pedido."
+            elif len(found_products) > 1:
+                # Lidar com ambiguidade: pedir clarificação
+                product_names = [p.nome_produto for p in found_products]
+                clarification_msg = f"Encontrei mais de uma opção para '{task.detalhes}': {', '.join(product_names)}. Qual deles você gostaria?"
+                logger.warning(f"Ambiguidade na busca de produto: {clarification_msg}")
+                step_input.additional_data["clarification_needed"] = clarification_msg
+                step_input.additional_data["response_text_override"] = clarification_msg
+            else:
+                logger.warning(f"Produto não encontrado para '{task.detalhes}'.")
+                step_input.additional_data["product_not_found"] = True
+                step_input.additional_data["response_text_override"] = f"Desculpe, não encontrei '{task.detalhes}' no cardápio."
+            # --- FIM NOVO ---
+
+        elif task.tipo_tarefa == 'remover_item':
+            if not task.detalhes:
+                logger.warning("Tentativa de remover item sem detalhes (nome do produto).")
+                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja remover."
+                return StepOutput(content="Clarificação necessária.")
+
+            item_removed = False
+            for i in range(len(order_state.items) - 1, -1, -1):
+                similarity = token_set_ratio(task.detalhes, order_state.items[i].product_name)
+                if similarity > 85:
+                    logger.info(f"Removendo item '{order_state.items[i].product_name}' do pedido.")
+                    del order_state.items[i]
+                    item_removed = True
+                    step_input.additional_data["response_text_override"] = f"Removido {task.detalhes} do seu pedido."
+                    break
+            if not item_removed:
+                step_input.additional_data["item_not_found_in_order"] = True
+                step_input.additional_data["response_text_override"] = f"Não encontrei '{task.detalhes}' no seu pedido."
+            step_input.additional_data["item_removed_successfully"] = item_removed
+
+        elif task.tipo_tarefa == 'modificar_item': # NOVO: Lógica básica para modificar item
+            if not task.detalhes:
+                logger.warning("Tentativa de modificar item sem detalhes.")
+                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja modificar e como."
+                return StepOutput(content="Clarificação necessária.")
+            
+            # Por enquanto, apenas um placeholder. A lógica real de modificação (adicionar opcional, mudar tamanho)
+            # seria mais complexa e dependeria de como os opcionais são modelados no OrderItem.
+            logger.info(f"Tentativa de modificar item: {task.detalhes}. Funcionalidade ainda não totalmente implementada.")
+            step_input.additional_data["response_text_override"] = f"Desculpe, a modificação de '{task.detalhes}' ainda não é suportada."
+
+        elif task.tipo_tarefa == 'confirmar_pedido':
+            logger.info("Finalizando o pedido.")
+            order_state.is_finalized = True
+            # NOVO: Gerar resumo do pedido para confirmação
+            if order_state.items:
+                summary_lines = [f"{item.quantity}x {item.product_name}" for item in order_state.items]
+                total_price = sum(item.total_price for item in order_state.items)
+                order_summary_text = f"Seu pedido atual: {'; '.join(summary_lines)}. Total: R$ {total_price:.2f}."
+                step_input.additional_data["order_summary_for_confirmation"] = order_summary_text
+                step_input.additional_data["response_text_override"] = order_summary_text + " Confirma?"
+            else:
+                step_input.additional_data["response_text_override"] = "Seu pedido está vazio. Gostaria de adicionar algo?"
 
         step_input.additional_data["order_state"] = order_state
         return StepOutput(content={})
 
     async def _route_to_data_collection_step(self, step_input: StepInput) -> Union[Step, List[Step]]:
-        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 1. Entrando em _route_to_data_collection_step.")
+        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 1. Entrando em _route_to_data_collection_step (Lógica Unificada).")
         receptionist_output = self._validate_receptionist_output(step_input.previous_step_content)
-        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 2. Saída do recepcionista validada.")
+        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 2. Saída do recepcionista validada: {receptionist_output}")
         step_input.additional_data['receptionist_output'] = receptionist_output
 
         if isinstance(receptionist_output, BuscaDeProduto):
-            logger.info("Roteando para a busca de produtos.")
+            logger.info("Roteando para a busca de produtos (BuscaDeProduto direta).")
             return self.product_search_step
 
         elif isinstance(receptionist_output, AnaliseDeIntencao) and receptionist_output.tarefas:
-            primeira_tarefa = receptionist_output.tarefas[0].tipo_tarefa
-            logger.info(f"Roteando para a tarefa: {primeira_tarefa}")
+            primeira_tarefa = receptionist_output.tarefas[0]
+            task_type = primeira_tarefa.tipo_tarefa
+            details = primeira_tarefa.detalhes or ""
+            logger.info(f"Roteando para a tarefa: {task_type}")
 
-            if primeira_tarefa == 'calcular_frete':
+            product_keywords = ['produto', 'cardápio', 'menu', 'comida', 'bebida', 'preço', 'tem', 'quais']
+            is_product_question = any(keyword in details.lower() for keyword in product_keywords)
+
+            if task_type == 'menu' or (task_type == 'fazer_pergunta_geral' and is_product_question):
+                logger.info(f"Tarefa '{task_type}' detectada como pergunta de produto. Convertendo para BuscaDeProduto.")
+                step_input.additional_data['receptionist_output'] = schemas.BuscaDeProduto(termos_gerais=details.split())
+                return self.product_search_step
+
+            if task_type == 'calcular_frete':
                 logger.info("Roteando para a sequência de cálculo de frete.")
                 return [self.geocode_step, self.freight_calculation_step]
             
             task_map = {
                 'falar_com_humano': self.human_handoff_step,
-                'menu': self.menu_step,
                 'adicionar_item': self.order_taking_step,
                 'remover_item': self.order_taking_step,
                 'confirmar_pedido': self.order_taking_step,
-                'horario_funcionamento': self.rag_search_step,
-                'fazer_pergunta_geral': self.rag_search_step
+                'horario_funcionamento': self.rag_search_step
             }
-            return task_map.get(primeira_tarefa, self.pass_through_step)
-        
-        logger.info("Nenhuma rota específica encontrada, usando o pass_through_step.")
-        return self.pass_through_step
+            
+            selected_step = task_map.get(task_type)
+            if selected_step:
+                return selected_step
+
+        logger.info("Nenhuma rota específica para produto ou tarefa encontrada, usando o rag_search_step como fallback.")
+        return self.rag_search_step
 
     async def _execute_rag_search(self, step_input: StepInput) -> StepOutput:
         logger.info("EXECUTOR: Executando busca RAG para pergunta geral.")
@@ -281,7 +428,6 @@ class OrchestratorAgent:
             if not search_results:
                 return StepOutput(content="")
 
-            # Concatena o conteúdo dos documentos encontrados para formar o contexto
             context = "\n".join([result.get('page_content', '') for result in search_results])
             step_input.additional_data["rag_context"] = context
             logger.info(f"Contexto RAG encontrado: {context}")
@@ -305,7 +451,6 @@ class OrchestratorAgent:
             if not search_results:
                 return StepOutput(content="")
 
-            # Concatena o conteúdo dos documentos encontrados para formar o contexto
             context = "\n".join([result.get('page_content', '') for result in search_results])
             step_input.additional_data["rag_context"] = context
             logger.info(f"Contexto RAG encontrado: {context}")
@@ -321,29 +466,18 @@ class OrchestratorAgent:
         
         json_data = extract_json_from_response(content)
         if json_data:
-            # Aponta para o dicionário correto, esteja ele aninhado ou não
             data_to_process = json_data.get('AnaliseDeIntencao', json_data)
 
-            # Lógica para transformar o objeto 'endereco' em uma string 'detalhes'
             if 'tarefas' in data_to_process and isinstance(data_to_process['tarefas'], list) and data_to_process['tarefas']:
                 tarefa = data_to_process['tarefas'][0]
                 if 'endereco' in tarefa and isinstance(tarefa['endereco'], dict):
                     logger.debug("Encontrado objeto 'endereco', convertendo para 'detalhes'.")
                     endereco_obj = tarefa['endereco']
-                    address_parts = [
-                        endereco_obj.get('logradouro'),
-                        endereco_obj.get('numero'),
-                        endereco_obj.get('bairro'),
-                        endereco_obj.get('cidade'),
-                        endereco_obj.get('estado'),
-                        endereco_obj.get('cep')
-                    ]
-                    # Formata o endereço e o atribui a 'detalhes'
+                    address_parts = [endereco_obj.get('logradouro'), endereco_obj.get('numero'), endereco_obj.get('bairro'), endereco_obj.get('cidade'), endereco_obj.get('estado'), endereco_obj.get('cep')]
                     tarefa['detalhes'] = ', '.join(filter(None, address_parts))
-                    del tarefa['endereco'] # Remove o campo original para evitar conflitos
+                    del tarefa['endereco']
 
             try:
-                # Tenta validar com os dados processados
                 if 'BuscaDeProduto' in json_data: return schemas.BuscaDeProduto(**json_data['BuscaDeProduto'])
                 if 'AnaliseDeIntencao' in json_data: return schemas.AnaliseDeIntencao(**json_data['AnaliseDeIntencao'])
                 if 'termos_gerais' in data_to_process: return schemas.BuscaDeProduto(**data_to_process)
@@ -378,11 +512,7 @@ class OrchestratorAgent:
                 logger.warning(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Mensagem vazia, retornando diretamente.")
                 return AIResponse(response_text="Por favor, envie uma mensagem de texto.", human_handoff=False, send_menu=False)
 
-            additional_data = {
-                "original_message": message, "order_state": order_state,
-                "personality_prompt": personality_prompt, "tenant_id": self.tenant_id,
-                "file_summary": file_summary, "user_id": self.user_id, **kwargs
-            }
+            additional_data = {"original_message": message, "order_state": order_state, "personality_prompt": personality_prompt, "tenant_id": self.tenant_id, "file_summary": file_summary, "user_id": self.user_id, **kwargs}
             logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - 4. Dados adicionais preparados. Chamando o workflow.arun().")
             
             workflow_response: WorkflowRunResponse = await self.workflow.arun(message=message, additional_data=additional_data)
@@ -415,7 +545,7 @@ class OrchestratorAgent:
                 file_summary=file_summary
             )
         except Exception as e:
-            logger.critical(f"Erro crítico no process_message: {e}", exc_info=True)
+            logger.error(f"Erro crítico no process_message: {e}", exc_info=True)
             return AIResponse(response_text=f"Desculpe, ocorreu um erro interno: {e}", human_handoff=True, send_menu=False)
 
     async def _handle_file_understanding(self, file_content: bytes, mimetype: str) -> tuple[str, Optional[str]]:
@@ -441,3 +571,36 @@ class OrchestratorAgent:
             logger.error(f"Erro na análise do arquivo: {e}", exc_info=True)
             logger.info(f"[{self.session_id}] - FIM _handle_file_understanding (erro)")
             return "Ocorreu um erro ao analisar o arquivo.", None
+
+    async def load_data_to_vector_db(self):
+        logger.info(f"[{self.session_id}] - Carregando dados de produtos para o VectorDB do tenant {self.tenant_id}")
+        vector_db_manager = VectorDBManager(self.db, collection_name=self.tenant_id)
+        
+        products = await run_in_threadpool(product_crud.get_products_by_tenant, self.db, self.tenant_id)
+        
+        tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, self.db, self.tenant_id)
+        general_info = tenant.config_ai if tenant else ""
+
+        document_text = general_info + "\n\n--- Cardápio Completo ---"
+        
+        if not products:
+            logger.info(f"[{self.session_id}] - Nenhum produto encontrado para o tenant {self.tenant_id}.")
+        else:
+            products_by_category = {}
+            for product in products:
+                category = product.categoria_produto or "Diversos"
+                if category not in products_by_category:
+                    products_by_category[category] = []
+                products_by_category[category].append(product)
+
+            for category, items in products_by_category.items():
+                document_text += f"\n**{category.upper()}**\n"
+                for item in items:
+                    price_str = f"R$ {item.preco_base:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    document_text += f"- {item.nome_produto}: {item.descricao_produto} - {price_str}\n"
+        
+        texts = [document_text]
+        metadatas = [{"source": "full_store_info_and_menu", "tenant_id": self.tenant_id}]
+        
+        await run_in_threadpool(vector_db_manager.add_documents, texts, metadatas)
+        logger.info(f"[{self.session_id}] - Informações da loja e {len(products)} produtos carregados como um único documento no VectorDB.")

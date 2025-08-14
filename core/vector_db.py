@@ -1,4 +1,5 @@
 import os
+import uuid
 from typing import List, Dict
 from dotenv import load_dotenv
 import logging
@@ -36,27 +37,27 @@ class VectorDBManager:
 
     def add_documents(self, texts: List[str], metadatas: List[Dict]):
         logger.info(f"Recriando documentos na coleção '{self.collection_name}'...")
-        if not texts:
-            return
         
         try:
-            # Garante que a tabela e o schema existam antes de qualquer operação
             logger.info(f"Garantindo que a tabela para a coleção '{self.collection_name}' exista.")
             self.vector_db.create()
 
-            # Limpa todos os documentos existentes na coleção do tenant.
             logger.info(f"Limpando todos os documentos antigos da coleção '{self.collection_name}'.")
             self.vector_db.delete()
 
-            # Cria e insere os novos documentos.
+            if not texts:
+                logger.info("Lista de textos vazia. Nenhum documento para adicionar.")
+                return
+
             documents_to_insert = []
             for text, metadata in zip(texts, metadatas):
-                doc = Document(content=text)
+                doc = Document(id=str(uuid.uuid4()), content=text)
                 doc.metadata = metadata
                 documents_to_insert.append(doc)
             
-            self.vector_db.insert(documents_to_insert)
-            logger.info(f"{len(documents_to_insert)} novos documentos inseridos com sucesso.")
+            if documents_to_insert:
+                self.vector_db.insert(documents_to_insert)
+                logger.info(f"{len(documents_to_insert)} novos documentos inseridos com sucesso.")
 
         except exc.SQLAlchemyError as e:
             logger.error(f"Erro ao recriar documentos na coleção '{self.collection_name}': {e}", exc_info=True)

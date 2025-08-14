@@ -1,15 +1,17 @@
 import logging
 from typing import Union
 from sqlalchemy.orm import Session # Adicionado
-from agno.agent import Agent
 from agno.models.google import Gemini
 from core.schemas import AnaliseDeIntencao, BuscaDeProduto, ModificacaoItem, TarefaIdentificada
+from services.agents.base_agent import BaseAgent # Nova importação
 
 logger = logging.getLogger(__name__)
 
-def get_receptionist_agent(model_id: str, api_key: str, db: Session, tenant_id: str):
-    return Agent(
+def get_receptionist_agent(model_id: str, api_key: str, db: Session, tenant_id: str, user_id: str, session_id: str):
+    return BaseAgent(
         model=Gemini(id=model_id, api_key=api_key),
+        api_key=api_key,
+        db=db, tenant_id=tenant_id, user_id=user_id, session_id=session_id,
         description="""
         Você é um especialista em análise de linguagem natural. Sua única função é ler a mensagem do usuário
         e decompor a solicitação em uma estrutura JSON. Use o schema `BuscaDeProduto` se a intenção principal

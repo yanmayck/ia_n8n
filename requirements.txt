@@ -26,3 +26,5 @@ pytest
 httpx
 pytest-asyncio
 redis
+thefuzz
+python-levenshtein
