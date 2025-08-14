@@ -89,7 +89,7 @@ async def handle_message(
             raise ValueError("Tenant não encontrado para a personalidade fornecida.")
 
         async def orchestrator_call(api_key: str):
-            logger.info(f"CHAT_SERVICE: Preparando para chamar o OrchestratorAgent com a chave que termina em '...{api_key[-4:]}'.")
+            logger.info(f"CHAT_HANDLER: Preparando para chamar o OrchestratorAgent com a chave que termina em '...{api_key[-4:]}'.")
             orchestrator = OrchestratorAgent(
                 db=db,
                 session_id=session_id,

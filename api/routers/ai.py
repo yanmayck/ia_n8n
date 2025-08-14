@@ -168,7 +168,7 @@ async def calcular_frete(
         raise HTTPException(status_code=400, detail="Google Maps API Key não configurada")
     
     try:
-        distancia_km = await google_maps_service.calcular_frete_google_maps_async(
+        distancia_km = await google_maps_client.calcular_frete_google_maps_async(
             float(tenant.latitude), 
             float(tenant.longitude), 
             cliente_lat, 

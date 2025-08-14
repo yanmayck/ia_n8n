@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from agno.models.google import Gemini
 from agno.memory.v2.memory import Memory
 from core.schemas import FinalResponseData
-from services.tools import get_contextual_suggestions_tool, recommendation_tool, get_applicable_promotions_tool, get_sql_query_tool
+from services.tools.product import get_contextual_suggestions_tool, recommendation_tool, get_applicable_promotions_tool
+from services.tools.sql import get_sql_query_tool
 from services.agents.base_agent import BaseAgent # Nova importação
 
 logger = logging.getLogger(__name__)

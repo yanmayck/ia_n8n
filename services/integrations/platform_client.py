@@ -1,7 +1,7 @@
 import logging
 from typing import List, Dict, Optional
 import httpx
-from core.database import SessionLocal
+from sqlalchemy.orm import Session
 from crud import tenant_crud
 
 logger = logging.getLogger(__name__)

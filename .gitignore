@@ -5,6 +5,7 @@ Thumbs.db
 # Arquivos de Editores e IDEs
 .vscode/
 .idea/
+.devcontainer/
 __pycache__/
 # Arquivos de Teste (Pytest, Coverage)
 .pytest_cache/

@@ -9,7 +9,7 @@ from crud import personality_crud
 from unittest.mock import patch
 
 # Testes para a API de Tenants
-@patch('services.agent_manager.load_data_to_vector_db')
+@patch('services.data_sync_service.load_data_to_vector_db')
 def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_session: Session):
     print("Executando test_create_tenant_api...")
     # Criar uma personalidade primeiro
@@ -48,7 +48,7 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
     assert data["nome_loja"] == "API Test Store"
     assert "id" in data
 
-@patch('services.agent_manager.load_data_to_vector_db')
+@patch('services.data_sync_service.load_data_to_vector_db')
 def test_create_duplicate_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_session: Session):
     # Obter token de autenticação
     login_data = {"password": os.getenv("ADMIN_PASSWORD")}

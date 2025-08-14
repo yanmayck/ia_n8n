@@ -7,7 +7,7 @@ from core import models, schemas
 
 logger = logging.getLogger(__name__)
 
-class RulesEngine:
+class PromotionService: # Renamed from RulesEngine
     def __init__(self, db: Session):
         self.db = db
 

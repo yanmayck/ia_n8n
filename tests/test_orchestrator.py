@@ -5,7 +5,7 @@ import json
 from unittest.mock import patch, AsyncMock
 from sqlalchemy.orm import Session
 
-from services.orchestrator_agent import OrchestratorAgent
+from services.main_orchestrator import OrchestratorAgent
 from core.schemas import AnaliseDeIntencao, TarefaIdentificada, AIResponse, FinalResponseData, BuscaDeProduto, ModificacaoItem, OrderTakingOutput, OrderItem, FreightDetails, OrderState
 from core import models, schemas
 from crud import tenant_crud

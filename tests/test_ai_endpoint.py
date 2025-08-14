@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 # Este fixture 'client' e 'db_session' virão do conftest.py
 # Não precisamos defini-los aqui, apenas usá-los.
 
-@patch('services.chat_service.handle_message')
+@patch('services.chat_handler.handle_message')
 def test_ai_endpoint_success(mock_handle_message, client: TestClient, db_session: Session, test_tenant):
     # Mock da resposta do serviço de chat
     mock_handle_message.return_value = {
@@ -37,7 +37,7 @@ def test_ai_endpoint_success(mock_handle_message, client: TestClient, db_session
     assert text_part['text_content'] == "Olá! Como posso ajudar?"
     mock_handle_message.assert_called_once()
 
-@patch('services.chat_service.handle_message')
+@patch('services.chat_handler.handle_message')
 def test_ai_endpoint_empty_message(mock_handle_message, client: TestClient, db_session: Session, test_tenant):
     # Mock da resposta do serviço de chat
     mock_handle_message.return_value = {

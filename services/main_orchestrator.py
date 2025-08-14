@@ -31,8 +31,9 @@ from services.agents.receptionist_agent import get_receptionist_agent
 from services.agents.order_taking_agent import get_order_taking_agent
 from services.agents.response_formulation_agent import get_response_formulation_agent
 from services.agents.file_understanding_agent import get_file_understanding_agent
-from services.tools import ferramenta_busca_avancada_produtos, geocode_address, freight_calculator, get_contextual_suggestions_tool, get_applicable_promotions_tool
-from services.product_service import ProductService
+from services.tools.product import ferramenta_busca_avancada_produtos, get_contextual_suggestions_tool, get_applicable_promotions_tool
+from services.tools.geolocation import geocode_address, freight_calculator
+from services.business_logic.product_service import ProductService
 from services.state_manager import state_manager
 
 

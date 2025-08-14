@@ -34,7 +34,7 @@ def test_get_contextual_suggestions(db_session: Session):
     product_crud.link_opcional_to_product(db_session, db_product.id_produto, db_opcional2.id_opcional)
 
     # 3. Executar a lógica e verificar
-    rules_engine = RulesEngine(db_session)
+    rules_engine = PromotionService(db_session)
     suggestions = rules_engine.get_contextual_suggestions(db_product.id_produto)
 
     assert len(suggestions) == 2

@@ -63,7 +63,7 @@ async def create_tenant(
         tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja)
         logger.info(f"Tenant {tenant_id} criado no banco de dados, iniciando vetorização.")
         
-        await agent_manager.load_data_to_vector_db(db, tenant_id)
+        await data_sync_service.load_data_to_vector_db(db, tenant_id)
         logger.info(f"Vetorização para o tenant {tenant_id} concluída com sucesso.")
 
     except ValueError as e:
@@ -149,7 +149,7 @@ async def update_tenant(
     updated_tenant = tenant_crud.update_tenant(db, tenant_id, tenant_update_schema_obj, conteudo_loja)
 
     # Re-carregar dados no PGVector após atualização
-    await agent_manager.load_data_to_vector_db(db, tenant_id)
+    await data_sync_service.load_data_to_vector_db(db, tenant_id)
 
     return updated_tenant
 
@@ -225,7 +225,7 @@ async def sync_menu_from_platform(tenant_id: str, db: Session = Depends(get_db))
         await run_in_threadpool(promocao_crud.replace_all_promocoes_for_tenant, db, tenant_id, menu_data.get('promocoes', []))
 
         # Re-vetorizar os dados
-        await agent_manager.load_data_to_vector_db(db, tenant_id)
+        await data_sync_service.load_data_to_vector_db(db, tenant_id)
 
         return {"message": "Sincronização concluída com sucesso!"}
 
@@ -246,7 +246,7 @@ async def upload_menu_images(tenant_id: str, files: List[UploadFile] = File(...)
     
     uploaded_images = []
     for file in files:
-        image_url = await file_handler.upload_image_to_supabase(file)
+        image_url = await supabase_client.upload_image_to_supabase(file)
         menu_image_data = schemas.MenuImageCreate(image_url=image_url, description=file.filename)
         db_menu_image = menu_image_crud.create_menu_image(db, menu_image_data, tenant_id)
         uploaded_images.append(db_menu_image)
@@ -266,6 +266,6 @@ async def delete_menu_image(tenant_id: str, image_id: int, db: Session = Depends
     if not db_menu_image or db_menu_image.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Imagem não encontrada para este tenant.")
     
-    await file_handler.delete_image_from_supabase(db_menu_image.image_url)
+    await supabase_client.delete_image_from_supabase(db_menu_image.image_url)
     menu_image_crud.delete_menu_image(db, image_id)
     return {"message": "Imagem deletada com sucesso."}

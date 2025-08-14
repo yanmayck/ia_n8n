@@ -150,6 +150,6 @@ async def test_tenant(db_session: Session):
     tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja=conteudo_loja_para_teste)
     
     # Carrega os dados do tenant no banco de vetores
-    await agent_manager.load_data_to_vector_db(db_session, tenant.tenant_id)
+    await data_sync_service.load_data_to_vector_db(db_session, tenant.tenant_id)
     
     return tenant

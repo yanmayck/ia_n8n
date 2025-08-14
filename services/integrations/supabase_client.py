@@ -4,19 +4,6 @@ from fastapi import HTTPException, UploadFile
 import httpx
 import uuid
 import mimetypes
-
-logger = logging.getLogger(__name__)
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-SERVICE_ROLE_KEY = os.getenv("SERVICE_ROLE_KEY")
-
-import os
-import logging
-from fastapi import HTTPException, UploadFile
-import httpx
-import uuid
-import mimetypes
 from PIL import Image
 import io
 
