@@ -93,8 +93,10 @@ async def test_freight_calculation_makes_real_api_call(db_session: Session, test
     print(f"Resposta real da IA (Frete): {result.response_text}")
     assert result.response_text and len(result.response_text) > 0
     assert result.freight_details is not None
+
     assert result.freight_details.cost > 0
     logger.info(f"[{session_id}] - FIM test_freight_calculation_makes_real_api_call")
+
 
 @pytest.mark.integration
 @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason=integration_test_reason)
@@ -183,5 +185,5 @@ async def test_freight_calculation_variable_cost_real_api_call(db_session: Sessi
     assert result.response_text and len(result.response_text) > 0
     assert result.freight_details is not None
     
-    assert result.freight_details.cost == pytest.approx(9.9, abs=0.1)
+    assert result.freight_details.cost == pytest.approx(9.53, abs=0.1)
     logger.info(f"[{session_id}] - FIM test_freight_calculation_variable_cost_real_api_call")

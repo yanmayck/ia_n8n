@@ -12,7 +12,7 @@ from core.database import engine
 from api.routers import tenants, ai, personalities, products, authentication, opcionais, promocoes, api_keys
 
 # Configuração de Logging
-dictConfig(LOGGING_CONFIG)
+# dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # Carrega as variáveis de ambiente

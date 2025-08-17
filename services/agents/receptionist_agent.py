@@ -12,27 +12,28 @@ def get_receptionist_agent(model_id: str, api_key: str, db: Session, tenant_id: 
         model=Gemini(id=model_id, api_key=api_key),
         api_key=api_key,
         db=db, tenant_id=tenant_id, user_id=user_id, session_id=session_id,
-        description="""
+        description=("""
         Você é um especialista em análise de linguagem natural. Sua única função é ler a mensagem do usuário
-        e decompor a solicitação em uma estrutura JSON. Use o schema `BuscaDeProduto` se a intenção principal
-        for encontrar ou modificar um produto. Use o schema `AnaliseDeIntencao` para outras intenções.
+        e decompor a solicitação em uma ou mais tarefas, retornando um objeto `AnaliseDeIntencao`.
 
-        **REGRA CRÍTICA PARA FRETE:** Para **QUALQUER** pergunta sobre custo de entrega, valor da entrega, cálculo de frete, ou similar,
-        você **DEVE OBRIGATORIAMENTE** usar o `tipo_tarefa` como `'calcular_frete'`.
+        **REGRAS DE ANÁLISE:**
+        1.  **SEMPRE** retorne uma lista de tarefas, mesmo que seja apenas uma.
+        2.  **Busca de Produto:** Para qualquer busca de produto (ex: "tem x-bacon sem picles?"), use `tipo_tarefa: 'buscar_produto'`.
+            - Os detalhes da busca DEVEM ser colocados como um dicionário no campo `detalhes`.
+        3.  **Pedido de Cardápio:** Para pedidos genéricos de cardápio (ex: "cardápio", "menu", "o que tem aí?"), use `tipo_tarefa: 'menu'`.
+        4.  **Cálculo de Frete:** Para perguntas sobre entrega, use `tipo_tarefa: 'calcular_frete'`.
+        5.  **Outras Tarefas:** Use os tipos de tarefa apropriados como `adicionar_item`, `falar_com_humano`, etc.
 
-        Exemplos de `BuscaDeProduto`:
-        - "Quero um x-bacon sem picles" -> BuscaDeProduto(termos_gerais=["x-bacon"], modificacoes=[ModificacaoItem(tipo='REMOVER_INGREDIENTE', nome_item='picles')])
-        - "tem pizza de calabresa?" -> BuscaDeProduto(termos_gerais=["pizza de calabresa"])
-        - "o que tem de sobremesa?" -> BuscaDeProduto(categorias=["sobremesas"])
-
-        Exemplos de `AnaliseDeIntencao`:
-        - "quanto é a entrega?" -> AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='calcular_frete')])
-        - "qual o valor do frete?" -> AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='calcular_frete')])
-        - "cardapio" -> AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='menu')])
-        - "falar com atendente" -> AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='falar_com_humano')])
-        - "Eu quero duas pizzas de calabresa e uma coca-cola." -> AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='adicionar_item', detalhes='duas pizzas de calabresa e uma coca-cola')])
-        """,
-        response_model=Union[BuscaDeProduto, AnaliseDeIntencao], # A IA pode escolher qual schema retornar
+        **EXEMPLOS:**
+        - "tem pizza de calabresa sem cebola? e qual o frete para a rua X?"
+          -> `AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='buscar_produto', detalhes={'termos_gerais': ['pizza de calabresa'], 'ingredientes_excluir': ['cebola']}), TarefaIdentificada(tipo_tarefa='calcular_frete', detalhes='rua X')])`
+        - "cardapio"
+          -> `AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='menu')])`
+        - "quanto custa a entrega?"
+          -> `AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa='calcular_frete')])`
+        """
+        ),
+        response_model=AnaliseDeIntencao, # <-- AQUI ESTÁ A MUDANÇA PRINCIPAL
         structured_outputs=True,
         session_state={"db": db, "tenant_id": tenant_id},
         add_state_in_messages=True,

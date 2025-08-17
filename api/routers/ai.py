@@ -12,7 +12,8 @@ import os
 
 from crud import tenant_crud, interaction_crud, menu_image_crud
 from core import schemas
-from services import chat_service, google_maps_service, file_handler
+from services import chat_handler # Corrected import
+from services.integrations import google_maps_client, supabase_client # Corrected import
 from api.dependencies import get_db, get_current_user
 from core.database import SessionLocal
 
@@ -62,10 +63,10 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
             except (base64.binascii.Error, TypeError) as e:
                 logger.error(f"Erro ao decodificar a mensagem em base64: {e}", exc_info=True)
         
-        logger.info(f"Chamando chat_service.handle_message com os seguintes parâmetros:")
+        logger.info(f"Chamando chat_handler.handle_message com os seguintes parâmetros:") # Corrected function call
         # ... (logs de debug)
 
-        ai_result = await chat_service.handle_message(
+        ai_result = await chat_handler.handle_message( # Corrected function call
             user_id=ai_request.user_phone,
             session_id=ai_request.whatsapp_message_id,
             message=ai_request.message_user,
@@ -93,8 +94,8 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                 "part_id": 1,
                 "type": "text",
                 "text_content": text_response,
-                "human_handoff": False,
-                "send_menu": False
+                "human_handoff": human_handoff,
+                "send_menu": send_menu
             })
 
         if send_menu:
@@ -104,7 +105,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                     async with httpx.AsyncClient() as client:
                         response = await client.get(latest_image.image_url)
                         response.raise_for_status()
-                        optimized_content = await file_handler.optimize_image(response.content)
+                        optimized_content = await supabase_client.optimize_image(response.content) # Corrected function call
                         image_base64 = base64.b64encode(optimized_content).decode("utf-8")
 
                     response_parts.append({
@@ -168,7 +169,7 @@ async def calcular_frete(
         raise HTTPException(status_code=400, detail="Google Maps API Key não configurada")
     
     try:
-        distancia_km = await google_maps_client.calcular_frete_google_maps_async(
+        distancia_km = await google_maps_client.calcular_frete_google_maps_async( # Corrected function call
             float(tenant.latitude), 
             float(tenant.longitude), 
             cliente_lat, 

@@ -15,7 +15,6 @@ class BaseAgent(Agent):
     def __init__(self, model, api_key: str, db: Session, tenant_id: str, user_id: str, session_id: str, **kwargs):
         super().__init__(
             model=model,
-            api_key=api_key, 
             **kwargs
         )
         

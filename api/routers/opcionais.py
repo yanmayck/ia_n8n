@@ -6,7 +6,6 @@ from typing import List
 from crud import opcional_crud
 from core import schemas
 from api.dependencies import get_db, get_current_user
-from services.agent_manager import load_data_to_vector_db
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()

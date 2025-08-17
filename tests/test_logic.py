@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy.orm import Session
-from services.rules_engine import RulesEngine
+from services.business_logic.promotion_service import PromotionService
 from crud import product_crud, opcional_crud, promocao_crud, tenant_crud # Import tenant_crud
 from core import schemas
 

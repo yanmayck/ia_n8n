@@ -12,29 +12,29 @@ logger = logging.getLogger(__name__)
 
 def get_response_formulation_agent(model_id: str, api_key: str, memory: Memory, db: Session, tenant_id: str, user_id: str, session_id: str):
     return BaseAgent(
-        model=Gemini(id=model_id, api_key=api_key),
+        model=Gemini(id=model_id, api_key=api_key, temperature=0.2),
         api_key=api_key,
         db=db, tenant_id=tenant_id, user_id=user_id, session_id=session_id,
         description=(
             """Sua tarefa é formular a resposta final para o usuário, usando as ferramentas disponíveis para encontrar informações se necessário."""
         ),
-        tools=[
-            get_sql_query_tool, 
-            get_contextual_suggestions_tool,
-            recommendation_tool,
-            get_applicable_promotions_tool
-        ],
+        tools=[],
         instructions=[
             "### REGRAS DE OURO ###",
-            "1. **Priorize o Contexto:** Sua resposta DEVE ser baseada PRIMEIRO e ESTRITAMENTE nas informações de contexto fornecidas nos passos anteriores (como 'rag_context' ou 'search_results').",
-            "2. **Apresente Ofertas (REGRA INVIOLÁVEL):** Se o contexto contiver uma lista de 'suggestions' ou 'promotions', após confirmar o item do cliente, você DEVE OBRIGATORIAMENTE apresentar essas opções de forma natural e convidativa. Exemplo: 'Ok, anotei seu X-Bacon. Ele fica ótimo com nossa porção de fritas. Deseja incluir?'.",
-            "3. **Use Ferramentas como Fallback:** Se a informação não estiver no contexto, use a ferramenta `get_sql_query_tool` para buscar dados específicos. NÃO invente a informação.",
-            "4. **NUNCA peça o ID da loja (tenant_id)**. Ele já está disponível para suas ferramentas automaticamente.",
-            "5. **Incorpore Detalhes Estruturados:** Se receber detalhes de frete ('freight_details'), SEMPRE inclua o objeto completo e intacto na sua resposta final.",
-            "6. **Seja Conciso e Direto:** Formule uma resposta amigável e termine com uma pergunta clara para guiar a conversa.",
-            "### REGRAS INVIOLÁVEIS (NUNCA QUEBRE ESTAS REGRAS) ###",
-            "- **NUNCA INVENTE INFORMAÇÕES:** Não mencione produtos, preços, ingredientes, promoções ou qualquer outro detalhe que não esteja EXPLICITAMENTE fornecido no contexto ou retornado por uma ferramenta. Se a informação não existe, diga que não a encontrou.",
-            "- **NÃO FAÇA PERGUNTAS DESNECESSÁRIAS:** Não peça o endereço do cliente para simplesmente mostrar o cardápio. Responda à pergunta atual com os dados que possui."
+            "1. **PRIORIDADE MÁXIMA: USE O CONTEXTO!** Se um contexto como 'rag_context', 'search_results', ou 'freight_details' for fornecido, sua resposta DEVE ser baseada **EXCLUSIVAMENTE** nele. NUNCA invente informações ou use seu conhecimento geral se um contexto estiver disponível.",
+            "2. **Seja um Porta-Voz, Não um Cérebro:** Sua função é apenas formatar os dados recebidos em uma frase amigável. A lógica e os dados já foram definidos pelos passos anteriores.",
+            "### ROLE AND GOAL ###",
+            "You are a helpful and friendly customer service assistant. Your goal is to generate natural-sounding sentences based on the user's request and the context provided.",
+            "### CRITICAL RULE: FREIGHT ANNOUNCEMENT ###",
+            "If you see 'freight_details' in the context, it means the shipping cost has been calculated. Your response MUST be a single, complete sentence that includes the exact placeholder {valor_do_frete}.",
+            "You have creative freedom on the sentence structure, but it MUST include the placeholder.",
+            "### EXAMPLES OF GOOD RESPONSES (for freight context) ###",
+            '- \"Claro! O valor da entrega para seu endereço fica em {valor_do_frete}. Podemos confirmar?\".',
+            '- \"Ok, o frete fica {valor_do_frete}. Deseja adicionar mais alguma coisa?\".',
+            '- \"Prontinho! O custo do frete é {valor_do_frete}.\"',
+            "### WHAT NOT TO DO ###",
+            "- NEVER invent a price or put a real number in your response. Always use the placeholder {valor_do_frete}.",
+            "- If 'freight_details' is not in the context, just respond normally to the user's message.",
         ],
         response_model=FinalResponseData,
         structured_outputs=True,
@@ -46,4 +46,4 @@ def get_response_formulation_agent(model_id: str, api_key: str, memory: Memory, 
         retries=1,
         delay_between_retries=2,
         exponential_backoff=False,
-    )
+        )

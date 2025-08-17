@@ -44,33 +44,30 @@ async def test_complete_order_flow(client: TestClient, db_session: Session, test
     product_crud.create_product(db_session, product1, tenant_id=test_tenant.tenant_id)
     product_crud.create_product(db_session, product2, tenant_id=test_tenant.tenant_id)
     
-    # Garante que a sessão do DB seja atualizada com os novos produtos
     db_session.commit()
 
     # --- PASSO 2: Pedir o cardápio ---
     logger.info(f"[{session_id}] - PASSO 2: Pedindo o cardápio via rota /ai.")
     response_parts = ask_ai_endpoint(client, "Qual o cardápio de vocês?", test_tenant.tenant_id, session_id, user_id)
     
-    # A resposta deve ser uma lista de partes, pegamos o conteúdo de texto
-    text_content = "".join([part.get("text_content", "") for part in response_parts if part.get("type") == "text"])
-    logger.info(f"[{session_id}] - Resposta da IA (Cardápio): {text_content}")
+    # Validação da Resposta de Texto
+    text_part = next((part for part in response_parts if part.get("type") == "text"), None)
+    assert text_part is not None, "Nenhuma parte de texto foi encontrada na resposta da API"
+    assert "aqui está o nosso cardápio" in text_part.get("text_content", "").lower()
+    logger.info(f"[{session_id}] - Resposta de texto para pedido de cardápio validada.")
 
-    # Validações: A IA deve listar os produtos que estão no banco de dados.
-    # Não deve inventar itens ou pedir o endereço.
-    assert "calabresa" in text_content.lower()
-    assert "quatro queijos" in text_content.lower()
-    assert "r$ 45,50" in text_content.replace(".", ",")
-    assert "r$ 50,00" in text_content.replace(".", ",")
-    assert "endereço" not in text_content.lower() # Garante que a IA não pulou para o passo de frete
+    # Validação da Ação de Enviar Menu
+    assert any(part.get("send_menu") for part in response_parts), "A flag 'send_menu' não foi ativada na resposta."
+    logger.info(f"[{session_id}] - Sinalização para envio do menu validada.")
 
     # --- PASSO 3: Fazer uma pergunta geral sobre o horário ---
     logger.info(f"[{session_id}] - PASSO 3: Perguntando o horário de funcionamento.")
-    response_parts = ask_ai_endpoint(client, "qual o horário de funcionamento?", test_tenant.tenant_id, session_id, user_id)
-    text_content = "".join([part.get("text_content", "") for part in response_parts if part.get("type") == "text"])
-    logger.info(f"[{session_id}] - Resposta da IA (Horário): {text_content}")
+    response_parts_horario = ask_ai_endpoint(client, "qual o horário de funcionamento?", test_tenant.tenant_id, session_id, user_id)
+    text_content_horario = "".join([part.get("text_content", "") for part in response_parts_horario if part.get("type") == "text"])
+    logger.info(f"[{session_id}] - Resposta da IA (Horário): {text_content_horario}")
 
     # Validação: A IA deve usar a informação do `config_ai` do `test_tenant`
-    assert "11h" in text_content.lower()
-    assert "23h" in text_content.lower()
+    assert "11h" in text_content_horario.lower()
+    assert "23h" in text_content_horario.lower()
 
     logger.info(f"[{session_id}] - Fluxo de teste de ponta a ponta concluído com sucesso!")

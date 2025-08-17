@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import pandas as pd
 import io
+import httpx
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
 from crud import tenant_crud, product_crud, opcional_crud, promocao_crud, menu_image_crud
 from core import models, schemas
-from services import file_handler, agent_manager
+from services.integrations import supabase_client
+from services import data_sync_service
 from api.dependencies import get_db, get_current_user
 
 router = APIRouter()

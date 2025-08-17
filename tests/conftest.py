@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 import os
 import sys
+from unittest.mock import patch
 from dotenv import load_dotenv
 
 # --- CONFIGURAÇÃO DO AMBIENTE DE TESTE ---
@@ -34,7 +35,7 @@ from api.dependencies import get_db
 from api.main import app
 from core import models, schemas
 from crud import tenant_crud
-from services import agent_manager
+from services import data_sync_service
 
 # --- USAR A URL DE TESTE ---
 TEST_DATABASE_URL = os.getenv("DATABASE_URL")
@@ -153,3 +154,5 @@ async def test_tenant(db_session: Session):
     await data_sync_service.load_data_to_vector_db(db_session, tenant.tenant_id)
     
     return tenant
+
+

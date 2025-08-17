@@ -9,7 +9,7 @@ from services.agents.base_agent import BaseAgent # Nova importação
 
 logger = logging.getLogger(__name__)
 
-def get_order_taking_agent(model_id: str, api_key: str, db: Session, tenant_id: str, memory: Optional[Memory] = None, user_id: str, session_id: str):
+def get_order_taking_agent(model_id: str, api_key: str, db: Session, tenant_id: str, user_id: str, session_id: str, memory: Optional[Memory] = None):
     return BaseAgent(
         model=Gemini(id=model_id, api_key=api_key),
         api_key=api_key,

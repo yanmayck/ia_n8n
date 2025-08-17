@@ -339,22 +339,22 @@ class FinalResponseData(BaseModel):
 # =======================================================================
 # Novos Esquemas para Análise de Intenção da IA
 # =======================================================================
-class TarefaIdentificada(BaseModel):
-    tipo_tarefa: str = Field(description="O tipo de tarefa, como 'adicionar_item', 'verificar_promocao', 'fazer_pergunta_geral'.")
-    detalhes: Optional[str] = Field(default=None, description="Os detalhes específicos da tarefa, como o nome do produto ou a pergunta feita.")
-
-class AnaliseDeIntencao(BaseModel):
-    tarefas: List[TarefaIdentificada] = Field(description="Uma lista de todas as tarefas que o usuário quer executar.")
-    contem_urgencia: bool = Field(default=False, description="Verdadeiro se o usuário parece apressado ou frustrado.")
-
 class ModificacaoItem(BaseModel):
     tipo: str = Field(description="O tipo de modificação, como 'REMOVER_INGREDIENTE' ou 'ADICIONAR_OPCIONAL'.")
     nome_item: str = Field(description="O nome do ingrediente ou opcional a ser modificado, ex: 'picles', 'bacon extra'.")
 
 class BuscaDeProduto(BaseModel):
-    termos_gerais: Optional[List[str]] = Field(description="Termos gerais de busca, como 'hambúrguer' ou 'pizza'.")
-    categorias: Optional[List[str]] = Field(description="Categorias específicas mencionadas, como 'bebidas' ou 'sobremesas'.")
-    ingredientes_incluir: Optional[List[str]] = Field(description="Ingredientes que DEVEM estar no produto.")
-    ingredientes_excluir: Optional[List[str]] = Field(description="Ingredientes que NÃO DEVEM estar no produto.")
-    faixa_de_preco: Optional[str] = Field(description="Preferência de preço, como 'barato' ou 'até 30 reais'.")
-    modificacoes: Optional[List[ModificacaoItem]] = Field(description="Lista de customizações pedidas pelo usuário para um item.")
+    termos_gerais: Optional[List[str]] = Field(default=None, description="Termos gerais de busca, como 'hambúrguer' ou 'pizza'.")
+    categorias: Optional[List[str]] = Field(default=None, description="Categorias específicas mencionadas, como 'bebidas' ou 'sobremesas'.")
+    ingredientes_incluir: Optional[List[str]] = Field(default=None, description="Ingredientes que DEVEM estar no produto.")
+    ingredientes_excluir: Optional[List[str]] = Field(default=None, description="Ingredientes que NÃO DEVEM estar no produto.")
+    faixa_de_preco: Optional[str] = Field(default=None, description="Preferência de preço, como 'barato' ou 'até 30 reais'.")
+    modificacoes: Optional[List[ModificacaoItem]] = Field(default=None, description="Lista de customizações pedidas pelo usuário para um item.")
+
+class TarefaIdentificada(BaseModel):
+    tipo_tarefa: str = Field(description="O tipo de tarefa, como 'adicionar_item', 'verificar_promocao', 'fazer_pergunta_geral'.")
+    detalhes: Optional[Union[str, BuscaDeProduto]] = Field(default=None, description="Os detalhes da tarefa, como o nome do produto, ou um objeto BuscaDeProduto com parâmetros para buscas complexas.")
+
+class AnaliseDeIntencao(BaseModel):
+    tarefas: List[TarefaIdentificada] = Field(description="Uma lista de todas as tarefas que o usuário quer executar.")
+    contem_urgencia: bool = Field(default=False, description="Verdadeiro se o usuário parece apressado ou frustrado.")

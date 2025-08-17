@@ -5,10 +5,11 @@ import asyncio
 import json
 import re
 from typing import Optional, List, Dict, Union
+from functools import partial
 
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
-from thefuzz.fuzz import token_set_ratio # Corrigido para importar diretamente a função
+from thefuzz.fuzz import token_set_ratio
 
 from agno.agent import Agent, RunResponse
 from agno.models.google import Gemini
@@ -58,7 +59,7 @@ def extract_json_from_response(response_content: Union[str, dict, list]) -> Opti
 
 class OrchestratorAgent:
     def __init__(self, db: Session, session_id: str, tenant_id: str, user_id: str, api_key: str):
-        logger.debug(f"OrchestratorAgent initialized for session {session_id}")
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Entering __init__")
         self.db = db
         self.session_id = session_id
         self.tenant_id = tenant_id
@@ -66,35 +67,39 @@ class OrchestratorAgent:
         self.api_key = api_key
         
         self.RECEPTIONIST_MODEL_ID = "models/gemini-1.5-flash-latest"
-        self.RESPONSE_FORMULATION_MODEL_ID = "models/gemini-1.5-flash-latest"
-        self.FILE_UNDERSTANDING_MODEL_ID = "models/gemini-1.5-pro-latest"
+        self.RESPONSE_FORMULATION_MODEL_ID = "models/gemini-2.5-flash-lite"
+        self.FILE_UNDERSTANDING_MODEL_ID = "models/gemini-2.5-flash-lite"
         self.ORDER_TAKING_AGENT_MODEL_ID = "models/gemini-1.5-flash-latest"
 
         self.memory_db = PostgresMemoryDb(table_name="user_memories", db_url=DATABASE_URL)
         self.memory = Memory(db=self.memory_db)
 
         # Agent Definitions
-        self.receptionist_agent = get_receptionist_agent(model_id=self.RECEPTIONIST_MODEL_ID, api_key=self.api_key, db=self.db, tenant_id=self.tenant_id)
-        self.order_taking_agent = get_order_taking_agent(model_id=self.ORDER_TAKING_AGENT_MODEL_ID, api_key=self.api_key, memory=self.memory, db=self.db, tenant_id=self.tenant_id)
-        self.response_formulation_agent = get_response_formulation_agent(model_id=self.RESPONSE_FORMULATION_MODEL_ID, api_key=self.api_key, memory=self.memory, db=self.db, tenant_id=self.tenant_id)
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Initializing agents...")
+        self.receptionist_agent = get_receptionist_agent(model_id=self.RECEPTIONIST_MODEL_ID, api_key=self.api_key, db=self.db, tenant_id=self.tenant_id, user_id=self.user_id, session_id=self.session_id)
+        self.order_taking_agent = get_order_taking_agent(model_id=self.ORDER_TAKING_AGENT_MODEL_ID, api_key=self.api_key, memory=self.memory, db=self.db, tenant_id=self.tenant_id, user_id=self.user_id, session_id=self.session_id)
+        self.response_formulation_agent = get_response_formulation_agent(model_id=self.RESPONSE_FORMULATION_MODEL_ID, api_key=self.api_key, memory=self.memory, db=self.db, tenant_id=self.tenant_id, user_id=self.user_id, session_id=self.session_id)
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Agents initialized.")
 
         # Step Definitions
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Defining steps...")
         self.receptionist_step = Step(name="receptionist", agent=self.receptionist_agent)
-        self.order_taking_step = Step(name="order_taking", executor=self._handle_order_taking_executor)
-        self.product_search_step = Step(name="product_search", executor=self._handle_product_search_executor)
-        self.human_handoff_step = Step(name="human_handoff", executor=self._handle_human_handoff_executor)
-        self.menu_step = Step(name="menu", executor=self._handle_menu_request_executor)
-        self.pass_through_step = Step(name="pass_through", executor=self._pass_through_executor)
-        self.geocode_step = Step(name="geocode", executor=self._execute_geocode_if_needed)
-        self.freight_calculation_step = Step(name="freight_calculation", executor=self._execute_freight_calculation)
-        self.rag_search_step = Step(name="rag_search", executor=self._execute_rag_search)
-        self.suggestion_gathering_step = Step(name="suggestion_gathering", executor=self._suggestion_gathering_executor)
-        self.response_formulation_step = Step(name="response_formulation", agent=self.response_formulation_agent)
+        self.order_taking_step = Step(name="order_taking", executor=partial(self._handle_order_taking_executor))
+        self.product_search_step = Step(name="product_search", executor=partial(self._handle_product_search_executor))
+        self.human_handoff_step = Step(name="human_handoff", executor=partial(self._handle_human_handoff_executor))
+        self.menu_step = Step(name="menu", executor=partial(self._handle_menu_request_executor))
+        self.pass_through_step = Step(name="pass_through", executor=partial(self._pass_through_executor))
+        self.geocode_step = Step(name="geocode", executor=partial(self._execute_geocode_if_needed))
+        self.freight_calculation_step = Step(name="freight_calculation", executor=partial(self._execute_freight_calculation))
+        self.rag_search_step = Step(name="rag_search", executor=partial(self._execute_rag_search))
+        self.suggestion_gathering_step = Step(name="suggestion_gathering", executor=partial(self._suggestion_gathering_executor))
+        self.response_formulation_step = Step(name="response_formulation", executor=partial(self._response_assembly_executor))
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Steps defined.")
 
         # Main Router
         self.main_router = Router(
             name="Main Router",
-            selector=self._route_to_data_collection_step,
+            selector=partial(self._route_to_data_collection_step),
             choices=[
                 self.order_taking_step,
                 self.product_search_step,
@@ -117,8 +122,63 @@ class OrchestratorAgent:
                 self.response_formulation_step,
             ]
         )
+        logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - __init__ finished.")
+
+    async def _response_assembly_executor(self, step_input: StepInput) -> StepOutput:
+        """
+        Executa a formulação da resposta, injetando contexto diretamente no prompt da IA final
+        para garantir que a IA use os dados corretos de forma conversacional.
+        """
+        logger.info("EXECUTOR: Montando a resposta final com injeção de contexto para a IA.")
+
+        additional_data = step_input.additional_data or {}
+        rag_context = additional_data.get('rag_context')
+        final_freight_details = additional_data.get('freight_details')
+        human_handoff = additional_data.get('human_handoff_needed', False)
+        send_menu = additional_data.get('send_menu_requested', False)
+
+        # Prepara a mensagem para a IA, injetando o contexto se ele existir.
+        final_prompt_message = step_input.message
+        if rag_context:
+            final_prompt_message = (
+                f"Com base estritamente na seguinte informação de contexto, responda à pergunta do usuário de forma amigável e completa. "
+                f"Contexto: '{rag_context}'. Pergunta do usuário: '{step_input.message}'"
+            )
+            logger.info(f"Prompt final para a IA com RAG injetado: {final_prompt_message}")
+
+        # Chama a IA para obter a frase, agora com o contexto injetado
+        text_generation_response = await self.response_formulation_agent.arun(
+            message=final_prompt_message,
+            additional_data=additional_data
+        )
+
+        generated_text = ""
+        if text_generation_response.content and hasattr(text_generation_response.content, 'text_response'):
+            generated_text = text_generation_response.content.text_response
+        else:
+            generated_text = str(text_generation_response.content)
+
+        # Lógica de substituição do placeholder para o frete continua a mesma
+        if final_freight_details and final_freight_details.cost is not None and "{valor_do_frete}" in generated_text:
+            cost_str = f"R$ {final_freight_details.cost:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            final_text = generated_text.replace("{valor_do_frete}", cost_str)
+            logger.info(f"Placeholder '{{valor_do_frete}}' substituído. Frase final: '{final_text}'")
+        else:
+            final_text = generated_text
+
+        # Monta o objeto de resposta final.
+        final_response = FinalResponseData(
+            text_response=final_text,
+            human_handoff_needed=human_handoff,
+            send_menu_requested=send_menu,
+            freight_details=final_freight_details
+        )
+        
+        logger.info(f"Resposta final montada: {final_response.model_dump_json(indent=2)}")
+        return StepOutput(content=final_response)
 
     async def _suggestion_gathering_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _suggestion_gathering_executor")
         logger.info("EXECUTOR: Executando _suggestion_gathering_executor para encontrar upsells.")
         
         search_results = step_input.additional_data.get("search_results")
@@ -134,9 +194,10 @@ class OrchestratorAgent:
             logger.warning("Produto encontrado nos resultados, mas sem ID. Pulando sugestões.")
             return StepOutput(content="Produto sem ID, sem sugestões.")
 
+        agent_for_tools = self.response_formulation_agent
         suggestions_json, promotions_json = await asyncio.gather(
-            run_in_threadpool(get_contextual_suggestions_tool.entrypoint, product_id=product_id, agent=self),
-            run_in_threadpool(get_applicable_promotions_tool.entrypoint, tenant_id=self.tenant_id, order_state_json="{}", agent=self)
+            run_in_threadpool(get_contextual_suggestions_tool.entrypoint, product_id=product_id, agent=agent_for_tools),
+            run_in_threadpool(get_applicable_promotions_tool.entrypoint, tenant_id=self.tenant_id, order_state_json="{}", agent=agent_for_tools)
         )
         
         try:
@@ -154,7 +215,52 @@ class OrchestratorAgent:
         
         return StepOutput(content="Sugestões e promoções coletadas.")
 
+    async def _response_formulation_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _response_formulation_executor")
+        
+        # Log do contexto final antes de formular a resposta
+        logger.info("--- CONTEXTO FINAL PARA O AGENTE DE FORMULAÇÃO ---")
+        try:
+            # Tenta serializar objetos Pydantic para um log mais limpo
+            loggable_data = {k: v.model_dump() if hasattr(v, 'model_dump') else v for k, v in step_input.additional_data.items()}
+            logger.info(json.dumps(loggable_data, indent=2, default=str))
+        except Exception as e:
+            logger.error(f"Não foi possível serializar o additional_data para o log: {e}")
+            logger.info(str(step_input.additional_data))
+        logger.info("-------------------------------------------------")
+
+        # Chama o agente de formulação manualmente
+        response = await self.response_formulation_agent.arun(
+            message=step_input.message,
+            additional_data=step_input.additional_data
+        )
+        
+        return StepOutput(content=response.content)
+
+    async def _response_formulation_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _response_formulation_executor")
+        
+        # Log do contexto final antes de formular a resposta
+        logger.info("--- CONTEXTO FINAL PARA O AGENTE DE FORMULAÇÃO ---")
+        try:
+            # Tenta serializar objetos Pydantic para um log mais limpo
+            loggable_data = {k: v.model_dump() if hasattr(v, 'model_dump') else v for k, v in step_input.additional_data.items()}
+            logger.info(json.dumps(loggable_data, indent=2, default=str))
+        except Exception as e:
+            logger.error(f"Não foi possível serializar o additional_data para o log: {e}")
+            logger.info(str(step_input.additional_data))
+        logger.info("-------------------------------------------------")
+
+        # Chama o agente de formulação manualmente
+        response = await self.response_formulation_agent.arun(
+            message=step_input.message,
+            additional_data=step_input.additional_data
+        )
+        
+        return StepOutput(content=response.content)
+
     async def _handle_menu_request_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_menu_request_executor")
         logger.info("EXECUTOR: Executando _handle_menu_request_executor.")
         
         step_input.additional_data['send_menu_requested'] = True
@@ -163,6 +269,7 @@ class OrchestratorAgent:
         return StepOutput(content=canned_response)
 
     async def _execute_geocode_if_needed(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _execute_geocode_if_needed")
         logger.info("EXECUTOR: Verificando necessidade de geocodificação.")
         additional_data = step_input.additional_data or {}
         
@@ -196,6 +303,7 @@ class OrchestratorAgent:
         return StepOutput(content=f"Coordenadas encontradas para {address}")
 
     async def _execute_freight_calculation(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _execute_freight_calculation")
         logger.info("EXECUTOR: Executando cálculo de frete determinístico.")
         additional_data = step_input.additional_data or {}
         
@@ -235,20 +343,18 @@ class OrchestratorAgent:
         return StepOutput(content=json.dumps(freight_result))
 
     async def _pass_through_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _pass_through_executor")
         logger.info("ORCHESTRATOR: Executing _pass_through_executor.")
         return StepOutput(content=step_input.previous_step_content)
 
     async def _handle_human_handoff_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_human_handoff_executor")
         logger.info("ORCHESTRATOR: Executing _handle_human_handoff_executor.")
         step_input.additional_data['human_handoff_needed'] = True
         return StepOutput(content={})
 
-    async def _handle_menu_request_executor(self, step_input: StepInput) -> StepOutput:
-        logger.info("ORCHESTRATOR: Executing _handle_menu_request_executor.")
-        step_input.additional_data['send_menu_requested'] = True
-        return StepOutput(content={})
-
     async def _handle_product_search_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_product_search_executor")
         logger.info("EXECUTOR: Executando _handle_product_search_executor com ProductService (Lógica Aprimorada).")
         receptionist_output = step_input.additional_data.get('receptionist_output')
 
@@ -276,6 +382,7 @@ class OrchestratorAgent:
         return StepOutput(content={})
 
     async def _handle_order_taking_executor(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_order_taking_executor")
         logger.info("EXECUTOR: Executing _handle_order_taking_executor com ProductService (Lógica Aprimorada).")
         order_state: OrderState = step_input.additional_data.get("order_state")
         receptionist_output: AnaliseDeIntencao = step_input.additional_data.get('receptionist_output')
@@ -293,8 +400,6 @@ class OrchestratorAgent:
                 step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja adicionar."
                 return StepOutput(content="Clarificação necessária.")
 
-            # --- NOVO: Usar find_product_filtered e lidar com ambiguidade ---
-            # Converte os detalhes da tarefa em um schema BuscaDeProduto para a busca filtrada
             search_criteria = schemas.BuscaDeProduto(termos_gerais=task.detalhes.split())
             found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=search_criteria)
 
@@ -312,7 +417,6 @@ class OrchestratorAgent:
                 step_input.additional_data["product_added_successfully"] = True
                 step_input.additional_data["response_text_override"] = f"Adicionado {found_product.nome_produto} ao seu pedido."
             elif len(found_products) > 1:
-                # Lidar com ambiguidade: pedir clarificação
                 product_names = [p.nome_produto for p in found_products]
                 clarification_msg = f"Encontrei mais de uma opção para '{task.detalhes}': {', '.join(product_names)}. Qual deles você gostaria?"
                 logger.warning(f"Ambiguidade na busca de produto: {clarification_msg}")
@@ -322,7 +426,6 @@ class OrchestratorAgent:
                 logger.warning(f"Produto não encontrado para '{task.detalhes}'.")
                 step_input.additional_data["product_not_found"] = True
                 step_input.additional_data["response_text_override"] = f"Desculpe, não encontrei '{task.detalhes}' no cardápio."
-            # --- FIM NOVO ---
 
         elif task.tipo_tarefa == 'remover_item':
             if not task.detalhes:
@@ -344,21 +447,18 @@ class OrchestratorAgent:
                 step_input.additional_data["response_text_override"] = f"Não encontrei '{task.detalhes}' no seu pedido."
             step_input.additional_data["item_removed_successfully"] = item_removed
 
-        elif task.tipo_tarefa == 'modificar_item': # NOVO: Lógica básica para modificar item
+        elif task.tipo_tarefa == 'modificar_item':
             if not task.detalhes:
                 logger.warning("Tentativa de modificar item sem detalhes.")
                 step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja modificar e como."
                 return StepOutput(content="Clarificação necessária.")
             
-            # Por enquanto, apenas um placeholder. A lógica real de modificação (adicionar opcional, mudar tamanho)
-            # seria mais complexa e dependeria de como os opcionais são modelados no OrderItem.
             logger.info(f"Tentativa de modificar item: {task.detalhes}. Funcionalidade ainda não totalmente implementada.")
             step_input.additional_data["response_text_override"] = f"Desculpe, a modificação de '{task.detalhes}' ainda não é suportada."
 
         elif task.tipo_tarefa == 'confirmar_pedido':
             logger.info("Finalizando o pedido.")
             order_state.is_finalized = True
-            # NOVO: Gerar resumo do pedido para confirmação
             if order_state.items:
                 summary_lines = [f"{item.quantity}x {item.product_name}" for item in order_state.items]
                 total_price = sum(item.total_price for item in order_state.items)
@@ -372,72 +472,57 @@ class OrchestratorAgent:
         return StepOutput(content={})
 
     async def _route_to_data_collection_step(self, step_input: StepInput) -> Union[Step, List[Step]]:
-        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 1. Entrando em _route_to_data_collection_step (Lógica Unificada).")
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _route_to_data_collection_step")
         receptionist_output = self._validate_receptionist_output(step_input.previous_step_content)
-        logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - Roteador: 2. Saída do recepcionista validada: {receptionist_output}")
+
+        logger.info("--- SAÍDA DO AGENTE RECEPCIONISTA ---")
+        logger.info(receptionist_output.model_dump_json(indent=2))
+        logger.info("------------------------------------")
+
         step_input.additional_data['receptionist_output'] = receptionist_output
 
-        if isinstance(receptionist_output, BuscaDeProduto):
-            logger.info("Roteando para a busca de produtos (BuscaDeProduto direta).")
+        if not receptionist_output.tarefas:
+            logger.warning("Recepcionista não retornou tarefas. Usando RAG como fallback.")
+            return self.rag_search_step
+
+        # Por enquanto, vamos processar apenas a primeira tarefa da lista.
+        primeira_tarefa = receptionist_output.tarefas[0]
+        task_type = primeira_tarefa.tipo_tarefa
+        details = primeira_tarefa.detalhes
+
+        logger.info(f"Roteando para a primeira tarefa da lista: {task_type}")
+
+        if task_type == 'menu':
+            return self.menu_step
+
+        if task_type == 'buscar_produto':
+            if isinstance(details, dict):
+                search_criteria = schemas.BuscaDeProduto(**details)
+                step_input.additional_data['receptionist_output'] = search_criteria
+            else:
+                step_input.additional_data['receptionist_output'] = schemas.BuscaDeProduto(termos_gerais=str(details).split())
             return self.product_search_step
 
-        elif isinstance(receptionist_output, AnaliseDeIntencao) and receptionist_output.tarefas:
-            primeira_tarefa = receptionist_output.tarefas[0]
-            task_type = primeira_tarefa.tipo_tarefa
-            details = primeira_tarefa.detalhes or ""
-            logger.info(f"Roteando para a tarefa: {task_type}")
+        if task_type == 'calcular_frete':
+            return [self.geocode_step, self.freight_calculation_step]
 
-            product_keywords = ['produto', 'cardápio', 'menu', 'comida', 'bebida', 'preço', 'tem', 'quais']
-            is_product_question = any(keyword in details.lower() for keyword in product_keywords)
+        task_map = {
+            'falar_com_humano': self.human_handoff_step,
+            'adicionar_item': self.order_taking_step,
+            'remover_item': self.order_taking_step,
+            'confirmar_pedido': self.order_taking_step,
+            'horario_funcionamento': self.rag_search_step
+        }
 
-            if task_type == 'menu' or (task_type == 'fazer_pergunta_geral' and is_product_question):
-                logger.info(f"Tarefa '{task_type}' detectada como pergunta de produto. Convertendo para BuscaDeProduto.")
-                step_input.additional_data['receptionist_output'] = schemas.BuscaDeProduto(termos_gerais=details.split())
-                return self.product_search_step
+        selected_step = task_map.get(task_type)
+        if selected_step:
+            return selected_step
 
-            if task_type == 'calcular_frete':
-                logger.info("Roteando para a sequência de cálculo de frete.")
-                return [self.geocode_step, self.freight_calculation_step]
-            
-            task_map = {
-                'falar_com_humano': self.human_handoff_step,
-                'adicionar_item': self.order_taking_step,
-                'remover_item': self.order_taking_step,
-                'confirmar_pedido': self.order_taking_step,
-                'horario_funcionamento': self.rag_search_step
-            }
-            
-            selected_step = task_map.get(task_type)
-            if selected_step:
-                return selected_step
-
-        logger.info("Nenhuma rota específica para produto ou tarefa encontrada, usando o rag_search_step como fallback.")
+        logger.info(f"Nenhuma rota específica para a tarefa '{task_type}' encontrada, usando o rag_search_step como fallback.")
         return self.rag_search_step
 
     async def _execute_rag_search(self, step_input: StepInput) -> StepOutput:
-        logger.info("EXECUTOR: Executando busca RAG para pergunta geral.")
-        query = step_input.message
-        tenant_id = step_input.additional_data.get("tenant_id")
-        
-        if not query or not tenant_id:
-            return StepOutput(content="")
-
-        try:
-            vector_db_manager = VectorDBManager(self.db, collection_name=tenant_id)
-            search_results = await run_in_threadpool(vector_db_manager.search_documents, query=query, k=1)
-            
-            if not search_results:
-                return StepOutput(content="")
-
-            context = "\n".join([result.get('page_content', '') for result in search_results])
-            step_input.additional_data["rag_context"] = context
-            logger.info(f"Contexto RAG encontrado: {context}")
-            return StepOutput(content=context)
-        except Exception as e:
-            logger.error(f"Erro durante a busca RAG: {e}", exc_info=True)
-            return StepOutput(content="")
-
-    async def _execute_rag_search(self, step_input: StepInput) -> StepOutput:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _execute_rag_search")
         logger.info("EXECUTOR: Executando busca RAG para pergunta geral.")
         query = step_input.message
         tenant_id = step_input.additional_data.get("tenant_id")
@@ -461,41 +546,46 @@ class OrchestratorAgent:
             return StepOutput(content="")
 
     def _validate_receptionist_output(self, content: any) -> any:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _validate_receptionist_output")
         logger.debug(f"Validando saída do recepcionista: {content}")
         if isinstance(content, (AnaliseDeIntencao, BuscaDeProduto)):
             return content
         
         json_data = extract_json_from_response(content)
         if json_data:
-            data_to_process = json_data.get('AnaliseDeIntencao', json_data)
-
-            if 'tarefas' in data_to_process and isinstance(data_to_process['tarefas'], list) and data_to_process['tarefas']:
-                tarefa = data_to_process['tarefas'][0]
-                if 'endereco' in tarefa and isinstance(tarefa['endereco'], dict):
-                    logger.debug("Encontrado objeto 'endereco', convertendo para 'detalhes'.")
-                    endereco_obj = tarefa['endereco']
-                    address_parts = [endereco_obj.get('logradouro'), endereco_obj.get('numero'), endereco_obj.get('bairro'), endereco_obj.get('cidade'), endereco_obj.get('estado'), endereco_obj.get('cep')]
-                    tarefa['detalhes'] = ', '.join(filter(None, address_parts))
-                    del tarefa['endereco']
+            data_to_process = None
+            # Tenta extrair o conteúdo correto, seja do formato antigo ou do novo
+            if 'AnaliseDeIntencao' in json_data:
+                data_to_process = json_data['AnaliseDeIntencao']
+            elif 'BuscaDeProduto' in json_data:
+                data_to_process = json_data['BuscaDeProduto']
+            elif json_data.get('dispositivo') == 'ANALISE_DE_INTENCAO' and 'parametros' in json_data:
+                data_to_process = json_data['parametros']
+            else:
+                data_to_process = json_data
 
             try:
-                if 'BuscaDeProduto' in json_data: return schemas.BuscaDeProduto(**json_data['BuscaDeProduto'])
-                if 'AnaliseDeIntencao' in json_data: return schemas.AnaliseDeIntencao(**json_data['AnaliseDeIntencao'])
-                if 'termos_gerais' in data_to_process: return schemas.BuscaDeProduto(**data_to_process)
-                if 'tarefas' in data_to_process: return schemas.AnaliseDeIntencao(**data_to_process)
+                # Agora, com data_to_process normalizado, tentamos validar
+                if 'termos_gerais' in data_to_process or 'ingredientes_excluir' in data_to_process:
+                    return schemas.BuscaDeProduto(**data_to_process)
+                if 'tarefas' in data_to_process:
+                    return schemas.AnaliseDeIntencao(**data_to_process)
             except Exception as e:
-                logger.error(f"Falha ao validar JSON do recepcionista: {e}")
+                logger.error(f"Falha ao validar JSON do recepcionista após normalização: {e}")
         
         logger.warning(f"Conteúdo do recepcionista não reconhecido: {content}")
         return AnaliseDeIntencao(tarefas=[TarefaIdentificada(tipo_tarefa="fazer_pergunta_geral", detalhes=str(content))])
 
     async def _get_order_state(self) -> OrderState:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _get_order_state")
         return await run_in_threadpool(state_manager.get_order_state, self.session_id) or OrderState()
 
     async def _save_order_state(self, state: OrderState):
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _save_order_state")
         await run_in_threadpool(state_manager.save_order_state, self.session_id, state)
 
     async def process_message(self, message: str, personality_prompt: str, **kwargs) -> AIResponse:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering process_message")
         logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - 1. Entrando em process_message.")
         order_state = await self._get_order_state()
         logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - 2. Estado do pedido recuperado.")
@@ -521,9 +611,11 @@ class OrchestratorAgent:
             logger.debug(f"ORCHESTRATOR_DEBUG: Resposta completa do workflow: {workflow_response!r}")
 
             logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - 5. workflow.arun() finalizado. Processando conteúdo final.")
-            final_content = workflow_response.content
+            agent_response = workflow_response.content
+            final_content = agent_response.content if isinstance(agent_response, RunResponse) else agent_response
+
             if not isinstance(final_content, FinalResponseData):
-                 logger.warning(f"Conteúdo final inesperado: {final_content}. Encapsulando.")
+                 logger.warning(f"Conteúdo final inesperado do agente: {final_content}. Encapsulando.")
                  final_content = FinalResponseData(text_response=str(final_content))
 
             last_step_data = getattr(workflow_response, 'additional_data', {})
@@ -540,8 +632,8 @@ class OrchestratorAgent:
             logger.info(f"ORCHESTRATOR_TRACE: [{self.session_id}] - 7. FIM process_message, retornando resposta.")
             return AIResponse(
                 response_text=final_content.text_response,
-                human_handoff=last_step_data.get('human_handoff_needed', False),
-                send_menu=last_step_data.get('send_menu_requested', False),
+                human_handoff=final_content.human_handoff_needed,
+                send_menu=final_content.send_menu_requested,
                 freight_details=final_content.freight_details,
                 file_summary=file_summary
             )
@@ -550,6 +642,7 @@ class OrchestratorAgent:
             return AIResponse(response_text=f"Desculpe, ocorreu um erro interno: {e}", human_handoff=True, send_menu=False)
 
     async def _handle_file_understanding(self, file_content: bytes, mimetype: str) -> tuple[str, Optional[str]]:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_file_understanding")
         logger.info(f"[{self.session_id}] - INICIO _handle_file_understanding")
         try:
             agent = get_file_understanding_agent(model_id=self.FILE_UNDERSTANDING_MODEL_ID, api_key=self.api_key, db=self.db, tenant_id=self.tenant_id)
@@ -574,6 +667,7 @@ class OrchestratorAgent:
             return "Ocorreu um erro ao analisar o arquivo.", None
 
     async def load_data_to_vector_db(self):
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering load_data_to_vector_db")
         logger.info(f"[{self.session_id}] - Carregando dados de produtos para o VectorDB do tenant {self.tenant_id}")
         vector_db_manager = VectorDBManager(self.db, collection_name=self.tenant_id)
         

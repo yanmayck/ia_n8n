@@ -8,14 +8,11 @@ from starlette.concurrency import run_in_threadpool
 from google.api_core import exceptions as google_exceptions
 
 from agno.exceptions import ModelProviderError
-from agno.media import Audio, Image, Video
-from agno.agent import Agent
-from agno.models.google import Gemini
 
-from core.database import DATABASE_URL, SessionLocal
+from core.database import DATABASE_URL # Removed SessionLocal
 from crud import interaction_crud, tenant_crud, api_key_crud
 from core.schemas import InteractionCreate
-from services.orchestrator_agent import OrchestratorAgent
+from services.main_orchestrator import OrchestratorAgent # Corrected import
 from agno.memory.v2.db.postgres import PostgresMemoryDb
 from sqlalchemy.orm import Session
 
@@ -25,9 +22,9 @@ memory_db = PostgresMemoryDb(table_name="user_memories", db_url=DATABASE_URL)
 
 async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrator_call):
     # 1. Tenta buscar chaves específicas do tenant no banco de dados
-    logger.info(f"CHAT_SERVICE: Buscando chaves de API para o tenant {tenant_id}.")
+    logger.info(f"CHAT_HANDLER: Buscando chaves de API para o tenant {tenant_id}.") # Corrected log
     api_keys = await run_in_threadpool(api_key_crud.get_api_keys_for_tenant, db, tenant_id)
-    logger.info(f"CHAT_SERVICE: Encontradas {len(api_keys)} chaves para o tenant {tenant_id}.")
+    logger.info(f"CHAT_HANDLER: Encontradas {len(api_keys)} chaves para o tenant {tenant_id}.") # Corrected log
 
     # 2. Se houver chaves específicas, usa a lógica de failover entre elas
     if api_keys:
@@ -35,9 +32,9 @@ async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrato
             if not key.is_active:
                 continue
             try:
-                logger.info(f"CHAT_SERVICE: Tentando chamada de IA com a chave de prioridade {key.priority} ({key.key_type}) para o tenant {tenant_id}")
+                logger.info(f"CHAT_HANDLER: Tentando chamada de IA com a chave de prioridade {key.priority} ({key.key_type}) para o tenant {tenant_id}") # Corrected log
                 result = await orchestrator_call(key.api_key_value)
-                logger.info(f"CHAT_SERVICE: Chamada de IA com a chave de prioridade {key.priority} bem-sucedida.")
+                logger.info(f"CHAT_HANDLER: Chamada de IA com a chave de prioridade {key.priority} bem-sucedida.") # Corrected log
                 return result
             except google_exceptions.ResourceExhausted as e:
                 logger.warning(f"Chave de prioridade {key.priority} ({key.key_type}) atingiu o limite. Tentando a próxima.")
@@ -47,15 +44,15 @@ async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrato
                 raise e # Levanta a exceção para outros erros
     
     # 3. Se não houver chaves específicas do tenant, usa a chave global do .env como fallback
-    logger.warning(f"CHAT_SERVICE: Nenhuma chave de API específica encontrada para o tenant {tenant_id}. Usando a chave global do .env como fallback.")
+    logger.warning(f"CHAT_HANDLER: Nenhuma chave de API específica encontrada para o tenant {tenant_id}. Usando a chave global do .env como fallback.") # Corrected log
     global_api_key = os.getenv("GEMINI_API_KEY")
     if not global_api_key:
         raise ValueError(f"Nenhuma chave de API específica para o tenant {tenant_id} e nenhuma chave global GEMINI_API_KEY encontrada no .env")
     
     try:
-        logger.info("CHAT_SERVICE: Tentando chamada de IA com a chave global do .env")
+        logger.info("CHAT_HANDLER: Tentando chamada de IA com a chave global do .env") # Corrected log
         result = await orchestrator_call(global_api_key)
-        logger.info("CHAT_SERVICE: Chamada de IA com a chave global bem-sucedida.")
+        logger.info("CHAT_HANDLER: Chamada de IA com a chave global bem-sucedida.") # Corrected log
         return result
     except Exception as e:
         logger.error(f"Erro crítico com a chave de API global do .env: {e}", exc_info=True)
@@ -64,7 +61,7 @@ async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrato
     # 4. Se todas as tentativas (específicas e global) falharem
     raise HTTPException(status_code=503, detail="Todas as chaves de API disponíveis falharam ou atingiram o limite.")
 
-async def handle_message(
+async def handle_message( 
     user_id: str, 
     session_id: str, 
     message: str, 
@@ -131,4 +128,3 @@ async def handle_message(
     except Exception as e:
         logger.critical(f"Erro crítico em handle_message: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Ocorreu um erro interno ao processar a mensagem.")
-    
