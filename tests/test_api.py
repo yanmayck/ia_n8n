@@ -1,16 +1,15 @@
 import os
-import os
-from fastapi.testclient import TestClient
+import httpx
 from sqlalchemy.orm import Session
 import pytest
 from core import schemas
 from crud import personality_crud
-
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 # Testes para a API de Tenants
-@patch('services.data_sync_service.load_data_to_vector_db')
-def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_session: Session):
+@pytest.mark.asyncio
+@patch('services.data_sync_service.load_data_to_vector_db', new_callable=AsyncMock)
+async def test_create_tenant_api(mock_load_data_to_vector_db, client: httpx.AsyncClient, db_session: Session):
     print("Executando test_create_tenant_api...")
     # Criar uma personalidade primeiro
     personality_data = schemas.PersonalityCreate(name="api_test_personality", prompt="API test prompt")
@@ -18,7 +17,7 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
 
     # Obter token de autenticação
     login_data = {"password": os.getenv("ADMIN_PASSWORD")}
-    response = client.post("/login", data=login_data)
+    response = await client.post("/login", data=login_data)
     assert response.status_code == 200
     token = response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -27,7 +26,7 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
     form_data = {
         'tenant_id': 'api_test_tenant',
         'nome_loja': 'API Test Store',
-        'ia_personality': created_personality.id,
+        'ia_personality': created_personality.name, # Passar o nome da personalidade
         'ai_prompt_description': 'API test prompt',
         'endereco': '789 API Ave',
         'cep': '11223-344',
@@ -39,7 +38,7 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
     files = {'loja_txt': ('loja.txt', loja_txt_content, 'text/plain')}
 
     # Simula a requisição POST com autenticação
-    response = client.post("/tenants/", data=form_data, files=files, headers=headers)
+    response = await client.post("/tenants/", data=form_data, files=files, headers=headers)
 
     # Verifica a resposta
     assert response.status_code == 200
@@ -47,12 +46,14 @@ def test_create_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_s
     assert data["tenant_id"] == "api_test_tenant"
     assert data["nome_loja"] == "API Test Store"
     assert "id" in data
+    mock_load_data_to_vector_db.assert_called_once()
 
-@patch('services.data_sync_service.load_data_to_vector_db')
-def test_create_duplicate_tenant_api(mock_load_data_to_vector_db, client: TestClient, db_session: Session):
+@pytest.mark.asyncio
+@patch('services.data_sync_service.load_data_to_vector_db', new_callable=AsyncMock)
+async def test_create_duplicate_tenant_api(mock_load_data_to_vector_db, client: httpx.AsyncClient, db_session: Session):
     # Obter token de autenticação
     login_data = {"password": os.getenv("ADMIN_PASSWORD")}
-    response = client.post("/login", data=login_data)
+    response = await client.post("/login", data=login_data)
     assert response.status_code == 200
     token = response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -72,11 +73,11 @@ def test_create_duplicate_tenant_api(mock_load_data_to_vector_db, client: TestCl
     files = {'loja_txt': ('loja.txt', loja_txt_content, 'text/plain')}
 
     # Primeira requisição (deve ser bem-sucedida)
-    response1 = client.post("/tenants/", data=form_data, files=files, headers=headers)
+    response1 = await client.post("/tenants/", data=form_data, files=files, headers=headers)
     assert response1.status_code == 200
 
     # Segunda requisição com o mesmo tenant_id (deve falhar)
-    response2 = client.post("/tenants/", data=form_data, files=files, headers=headers)
+    response2 = await client.post("/tenants/", data=form_data, files=files, headers=headers)
     assert response2.status_code == 400
     assert "já está cadastrado" in response2.json()["detail"]
 

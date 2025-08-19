@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from core import models, schemas
 
 def create_interaction(db: Session, interaction: schemas.InteractionCreate):
-    db_interaction = models.Interaction(**interaction.dict())
+    db_interaction = models.Interaction(**interaction.model_dump())
     db.add(db_interaction)
     db.commit()
     db.refresh(db_interaction)

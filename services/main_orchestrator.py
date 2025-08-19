@@ -25,7 +25,7 @@ from core.database import DATABASE_URL
 from core.schemas import (
     AIResponse, FinalResponseData, AnaliseDeIntencao, BuscaDeProduto, OrderState, TarefaIdentificada, FreightDetails
 )
-from crud import tenant_crud, product_crud, user_address_crud
+from crud import tenant_crud, product_crud, user_address_crud, promocao_crud
 from agno.memory.v2.db.postgres import PostgresMemoryDb
 from core.vector_db import VectorDBManager
 from services.agents.receptionist_agent import get_receptionist_agent
@@ -34,6 +34,7 @@ from services.agents.response_formulation_agent import get_response_formulation_
 from services.agents.file_understanding_agent import get_file_understanding_agent
 from services.tools.product import ferramenta_busca_avancada_produtos, get_contextual_suggestions_tool, get_applicable_promotions_tool
 from services.tools.geolocation import geocode_address, freight_calculator
+from services.integrations.platform_client import save_order_to_platform
 from services.business_logic.product_service import ProductService
 from services.state_manager import state_manager
 
@@ -73,6 +74,7 @@ class OrchestratorAgent:
 
         self.memory_db = PostgresMemoryDb(table_name="user_memories", db_url=DATABASE_URL)
         self.memory = Memory(db=self.memory_db)
+        self.session_state = {"db": self.db, "tenant_id": self.tenant_id}
 
         # Agent Definitions
         logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Initializing agents...")
@@ -93,6 +95,7 @@ class OrchestratorAgent:
         self.freight_calculation_step = Step(name="freight_calculation", executor=partial(self._execute_freight_calculation))
         self.rag_search_step = Step(name="rag_search", executor=partial(self._execute_rag_search))
         self.suggestion_gathering_step = Step(name="suggestion_gathering", executor=partial(self._suggestion_gathering_executor))
+        self.greeting_step = Step(name="greeting", executor=partial(self._handle_greeting_executor)) # Novo Step
         self.response_formulation_step = Step(name="response_formulation", executor=partial(self._response_assembly_executor))
         logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - Steps defined.")
 
@@ -108,7 +111,8 @@ class OrchestratorAgent:
                 self.rag_search_step,
                 self.pass_through_step,
                 self.geocode_step,
-                self.freight_calculation_step
+                self.freight_calculation_step,
+                self.greeting_step # Adicionado aos choices
             ]
         )
 
@@ -117,12 +121,24 @@ class OrchestratorAgent:
             name="Chatbot Workflow",
             steps=[
                 self.receptionist_step,
-                self.main_router,
-                self.suggestion_gathering_step,
-                self.response_formulation_step,
+                self.main_router, # O router principal decide o caminho
+                # Apenas os caminhos que precisam de sugestões/respostas complexas passam pelos steps seguintes
+                Steps(
+                    name="ComplexResponsePath",
+                    steps=[
+                        self.suggestion_gathering_step,
+                        self.response_formulation_step,
+                    ]
+                )
             ]
         )
         logger.debug(f"ORCHESTRATOR_FLOW: [{session_id}] - __init__ finished.")
+
+    async def _handle_greeting_executor(self, step_input: StepInput) -> StepOutput:
+        """Executor para a tarefa de saudação. Apenas sinaliza para o montador de resposta."""
+        logger.info("EXECUTOR: Executando _handle_greeting_executor.")
+        # Apenas passa um sinal para o próximo step. A lógica de geração fica no _response_assembly_executor.
+        return StepOutput(content="ACTION:GREETING")
 
     async def _response_assembly_executor(self, step_input: StepInput) -> StepOutput:
         """
@@ -132,19 +148,53 @@ class OrchestratorAgent:
         logger.info("EXECUTOR: Montando a resposta final com injeção de contexto para a IA.")
 
         additional_data = step_input.additional_data or {}
+        
+        # Usa o resultado do passo anterior como a nova "pergunta" para o agente de resposta.
+        message_for_formulation = step_input.previous_step_content or step_input.message
+        if isinstance(message_for_formulation, dict) and not message_for_formulation:
+             message_for_formulation = step_input.message
+
+        # Rota especial para saudações
+        if message_for_formulation == "ACTION:GREETING":
+            logger.info("Gerando saudação personalizada.")
+            personality_prompt = additional_data.get("personality_prompt", "Você é um assistente prestativo.")
+            greeting_prompt = f"{personality_prompt}. Sua tarefa é criar uma saudação de boas-vindas calorosa e se apresentar brevemente. Não faça perguntas, apenas se apresente."
+            
+            text_generation_response = await self.response_formulation_agent.arun(message=greeting_prompt)
+            generated_text = str(text_generation_response.content.text_response) if text_generation_response.content else "Olá! Como posso ajudar?"
+
+            return StepOutput(content=FinalResponseData(text_response=generated_text))
+
+        # Lógica normal de montagem de resposta
         rag_context = additional_data.get('rag_context')
         final_freight_details = additional_data.get('freight_details')
         human_handoff = additional_data.get('human_handoff_needed', False)
         send_menu = additional_data.get('send_menu_requested', False)
 
-        # Prepara a mensagem para a IA, injetando o contexto se ele existir.
-        final_prompt_message = step_input.message
+        # Lógica de injeção de contexto explícito
+        context_parts = []
         if rag_context:
+            context_parts.append(f"Contexto Geral: {rag_context}")
+        
+        promotions = additional_data.get('promotions')
+        if promotions:
+            promo_texts = [f"'{p.get('nome_promocao')}' ({p.get('descricao_para_ia')})" for p in promotions]
+            context_parts.append(f"Promoções Aplicáveis: {', '.join(promo_texts)}")
+
+        suggestions = additional_data.get('suggestions')
+        if suggestions:
+            sugg_texts = [f"'{s.get('nome')}'" for s in suggestions]
+            context_parts.append(f"Sugestões de Itens Adicionais: {', '.join(sugg_texts)}")
+
+        # Prepara a mensagem para a IA, injetando todo o contexto.
+        final_prompt_message = message_for_formulation
+        if context_parts:
+            full_context = " | ".join(context_parts)
             final_prompt_message = (
-                f"Com base estritamente na seguinte informação de contexto, responda à pergunta do usuário de forma amigável e completa. "
-                f"Contexto: '{rag_context}'. Pergunta do usuário: '{step_input.message}'"
+                f"Com base estritamente no seguinte contexto, responda à pergunta do usuário. "
+                f"Contexto: '{full_context}'. Pergunta do usuário: '{message_for_formulation}'"
             )
-            logger.info(f"Prompt final para a IA com RAG injetado: {final_prompt_message}")
+            logger.info(f"Prompt final para a IA com contexto injetado: {final_prompt_message}")
 
         # Chama a IA para obter a frase, agora com o contexto injetado
         text_generation_response = await self.response_formulation_agent.arun(
@@ -178,42 +228,146 @@ class OrchestratorAgent:
         return StepOutput(content=final_response)
 
     async def _suggestion_gathering_executor(self, step_input: StepInput) -> StepOutput:
-        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _suggestion_gathering_executor")
-        logger.info("EXECUTOR: Executando _suggestion_gathering_executor para encontrar upsells.")
+        """
+        Coleta promoções aplicáveis e sugestões contextuais com base no estado do pedido.
+        """
+        logger.info("EXECUTOR: Executando _suggestion_gathering_executor para encontrar upsells e promoções.")
         
-        search_results = step_input.additional_data.get("search_results")
-        
-        if not search_results or not isinstance(search_results, list) or len(search_results) == 0:
-            logger.info("Nenhum produto encontrado no contexto, pulando a busca por sugestões.")
-            return StepOutput(content="Nenhuma sugestão para adicionar.")
+        additional_data = step_input.additional_data
+        order_state: OrderState = additional_data.get("order_state")
 
-        product_context = search_results[0]
-        product_id = product_context.get("id_produto")
+        # Se o pedido já foi confirmado, não há mais nada a sugerir.
+        if order_state and order_state.status == "confirmed":
+            logger.info("Pedido já confirmado. Pulando a busca por sugestões e promoções.")
+            return StepOutput(content={})
 
-        if not product_id:
-            logger.warning("Produto encontrado nos resultados, mas sem ID. Pulando sugestões.")
-            return StepOutput(content="Produto sem ID, sem sugestões.")
+        if not order_state or not order_state.items:
+            logger.info("Pedido vazio, pulando a busca por sugestões e promoções.")
+            return StepOutput(content={})
 
-        agent_for_tools = self.response_formulation_agent
-        suggestions_json, promotions_json = await asyncio.gather(
-            run_in_threadpool(get_contextual_suggestions_tool.entrypoint, product_id=product_id, agent=agent_for_tools),
-            run_in_threadpool(get_applicable_promotions_tool.entrypoint, tenant_id=self.tenant_id, order_state_json="{}", agent=agent_for_tools)
+        # Lógica para não oferecer promoções repetidas
+        promocoes_ja_oferecidas = set(order_state.promocoes_oferecidas_ids or [])
+
+        # Tarefas para executar em paralelo
+        tasks = []
+
+        # 1. Tarefa para buscar promoções aplicáveis (usa o pedido inteiro)
+        order_state_json = order_state.model_dump_json()
+        promotions_task = get_applicable_promotions_tool.entrypoint(
+            tenant_id=self.tenant_id, 
+            order_state_json=order_state_json, 
+            agent=self # Passando o próprio orquestrador como agente para acesso ao DB
         )
-        
-        try:
-            suggestions = json.loads(suggestions_json)
-            promotions = json.loads(promotions_json)
-        except json.JSONDecodeError:
-            suggestions = []
-            promotions = []
-            logger.error("Erro ao decodificar JSON das ferramentas de sugestão/promoção.")
+        tasks.append(promotions_task)
 
-        step_input.additional_data["suggestions"] = suggestions
-        step_input.additional_data["promotions"] = promotions
+        # 2. Tarefa para buscar sugestões contextuais (usa o último item adicionado)
+        last_item = order_state.items[-1]
+        if hasattr(last_item, 'product_id') and last_item.product_id:
+            suggestions_task = get_contextual_suggestions_tool.entrypoint(
+                product_id=last_item.product_id, 
+                agent=self
+            )
+            tasks.append(suggestions_task)
+        else:
+            suggestions_task = None
+
+        try:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Processa resultado das promoções
+            promotions_result = results[0]
+            if isinstance(promotions_result, Exception):
+                logger.error(f"Erro ao buscar promoções: {promotions_result}", exc_info=promotions_result)
+                additional_data['promotions'] = []
+            else:
+                all_promotions = json.loads(promotions_result)
+                # Filtra promoções que já foram oferecidas
+                new_promotions = [p for p in all_promotions if p.get('id') not in promocoes_ja_oferecidas]
+                additional_data['promotions'] = new_promotions
+                logger.info(f"Novas promoções a serem oferecidas: {additional_data['promotions']}")
+                # Atualiza o estado com os IDs das promoções que acabaram de ser adicionadas ao contexto
+                if new_promotions:
+                    # Armazena a primeira nova promoção oferecida para possível aceite
+                    order_state.last_offered_promotion_id = new_promotions[0].get('id')
+                    for p in new_promotions:
+                        order_state.promocoes_oferecidas_ids.append(p.get('id'))
+
+            # Processa resultado das sugestões
+            if suggestions_task:
+                suggestions_result = results[1]
+                if isinstance(suggestions_result, Exception):
+                    logger.error(f"Erro ao buscar sugestões: {suggestions_result}", exc_info=suggestions_result)
+                    additional_data['suggestions'] = []
+                else:
+                    suggestions = json.loads(suggestions_result)
+                    additional_data['suggestions'] = suggestions
+                    logger.info(f"Sugestões encontradas: {additional_data['suggestions']}")
+
+        except Exception as e:
+            logger.error(f"Erro inesperado ao executar gather de sugestões/promoções: {e}", exc_info=True)
+            additional_data['suggestions'] = []
+            additional_data['promotions'] = []
+
+        return StepOutput(content={})
+
+    async def _route_to_data_collection_step(self, step_input: StepInput) -> Union[Step, List[Step]]:
+        logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _route_to_data_collection_step")
+        receptionist_output = self._validate_receptionist_output(step_input.previous_step_content)
+
+        logger.info("--- SAÍDA DO AGENTE RECEPCIONISTA ---")
+        logger.info(receptionist_output.model_dump_json(indent=2))
+        logger.info("------------------------------------")
+
+        step_input.additional_data['receptionist_output'] = receptionist_output
+
+        if not receptionist_output.tarefas:
+            logger.warning("Recepcionista não retornou tarefas. Usando RAG como fallback.")
+            return self.rag_search_step
+
+        task_types = {t.tipo_tarefa for t in receptionist_output.tarefas}
         
-        logger.info(f"Encontradas {len(suggestions)} sugestões e {len(promotions)} promoções.")
-        
-        return StepOutput(content="Sugestões e promoções coletadas.")
+        # Prioridade 0: Se for apenas uma saudação, rota exclusiva.
+        if 'saudacao' in task_types and len(task_types) == 1:
+            logger.info("Roteando para a rota de saudação.")
+            # O executor do greeting_step retorna uma FinalResponseData, então o workflow termina aqui.
+            return self.greeting_step
+
+        # Lógica de roteamento baseada nas tarefas identificadas
+        steps_to_run = []
+
+        # Prioridade 1: Se o cálculo de frete ou fechamento de conta for solicitado, essa rota é acionada.
+        if 'calcular_frete' in task_types or 'fechar_conta' in task_types:
+            logger.info("Priorizando rota de geocodificação e cálculo de frete.")
+            steps_to_run.extend([self.geocode_step, self.freight_calculation_step])
+            # Remove as tarefas para não serem processadas novamente
+            task_types.discard('calcular_frete')
+            task_types.discard('fechar_conta')
+
+        # Processa as tarefas restantes
+        if task_types:
+            # Mapeia os tipos de tarefa restantes para seus respectivos steps
+            task_map = {
+                'falar_com_humano': self.human_handoff_step,
+                'adicionar_item': self.order_taking_step,
+                'remover_item': self.order_taking_step,
+                'confirmar_pedido': self.order_taking_step,
+                'aceitar_oferta': self.order_taking_step, # Nova rota
+                'menu': self.menu_step,
+                'buscar_produto': self.product_search_step,
+                'horario_funcionamento': self.rag_search_step
+            }
+            # Adiciona os steps correspondentes às tarefas restantes, evitando duplicatas
+            for task in task_types:
+                if task in task_map and task_map[task] not in steps_to_run:
+                    steps_to_run.append(task_map[task])
+
+        # Se, após tudo, nenhuma rota foi definida, usa o RAG como fallback.
+        if not steps_to_run:
+            logger.info("Nenhuma rota específica para as tarefas encontradas, usando o rag_search_step como fallback.")
+            return self.rag_search_step
+
+        logger.info(f"Roteando para a seguinte sequência de steps: {[s.name for s in steps_to_run]}")
+        return steps_to_run
 
     async def _response_formulation_executor(self, step_input: StepInput) -> StepOutput:
         logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _response_formulation_executor")
@@ -279,15 +433,37 @@ class OrchestratorAgent:
 
         receptionist_output = additional_data.get('receptionist_output')
         address = None
-        if isinstance(receptionist_output, schemas.AnaliseDeIntencao) and receptionist_output.tarefas:
-            address = receptionist_output.tarefas[0].detalhes
+
+        # Lógica aprimorada para encontrar o endereço
+        if isinstance(receptionist_output, schemas.AnaliseDeIntencao):
+            for task in receptionist_output.tarefas:
+                # Prioridade 1: Procurar na tarefa de calcular frete
+                if task.tipo_tarefa == 'calcular_frete' and isinstance(task.detalhes, str):
+                    address = task.detalhes
+                    break
+                # Prioridade 2: Procurar em modificações de endereço
+                if isinstance(task.detalhes, schemas.BuscaDeProduto) and task.detalhes.modificacoes:
+                    for mod in task.detalhes.modificacoes:
+                        if mod.tipo == 'ADICIONAR_ENDERECO':
+                            address = mod.nome_item
+                            break
+                if address:
+                    break
         
+        # Fallback para a mensagem original se não encontrar de forma estruturada
         if not address:
-            address = step_input.message
+            # Extrai um possível endereço da mensagem do usuário como último recurso
+            # Esta regex é um exemplo simples e pode ser aprimorada
+            match = re.search(r"meu endereço é (.+)", step_input.message, re.IGNORECASE)
+            if match:
+                address = match.group(1).strip()
         
         if not address or not isinstance(address, str) or not address.strip():
             logger.warning("Nenhum endereço de texto válido fornecido para geocodificação. Pulando.")
             return StepOutput(content=json.dumps({"error": "address_required"}))
+        
+        # Salva o endereço de texto no estado do pedido para uso posterior
+        additional_data['order_state'].address = address
         
         logger.info(f"Executando geocodificação para o endereço: {address}")
         coords_json = await geocode_address.entrypoint(address=address)
@@ -356,15 +532,26 @@ class OrchestratorAgent:
     async def _handle_product_search_executor(self, step_input: StepInput) -> StepOutput:
         logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_product_search_executor")
         logger.info("EXECUTOR: Executando _handle_product_search_executor com ProductService (Lógica Aprimorada).")
+        
         receptionist_output = step_input.additional_data.get('receptionist_output')
+        search_criteria = None
 
-        if not isinstance(receptionist_output, schemas.BuscaDeProduto):
-            logger.warning(f"Input para _handle_product_search_executor não era BuscaDeProduto, mas {type(receptionist_output)}. Pulando busca.")
+        # Extrai os critérios de busca, seja de um objeto BuscaDeProduto ou de uma tarefa dentro de AnaliseDeIntencao
+        if isinstance(receptionist_output, schemas.BuscaDeProduto):
+            search_criteria = receptionist_output
+        elif isinstance(receptionist_output, schemas.AnaliseDeIntencao):
+            for task in receptionist_output.tarefas:
+                if task.tipo_tarefa == 'buscar_produto' and isinstance(task.detalhes, schemas.BuscaDeProduto):
+                    search_criteria = task.detalhes
+                    break
+
+        if not search_criteria:
+            logger.warning(f"Não foi possível extrair critérios de busca válidos do input: {receptionist_output}. Pulando busca.")
             step_input.additional_data["search_results"] = []
             return StepOutput(content={})
 
         product_service = ProductService(db=self.db, tenant_id=self.tenant_id)
-        found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=receptionist_output)
+        found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=search_criteria)
 
         if found_products:
             logger.info(f"Busca de produto encontrou {len(found_products)} resultado(s).")
@@ -376,7 +563,7 @@ class OrchestratorAgent:
             } for p in found_products]
             step_input.additional_data["search_results"] = search_results
         else:
-            logger.info(f"Nenhum produto encontrado para os critérios: '{receptionist_output.model_dump_json()}'")
+            logger.info(f"Nenhum produto encontrado para os critérios: '{search_criteria.model_dump_json()}'")
             step_input.additional_data["search_results"] = []
 
         return StepOutput(content={})
@@ -384,92 +571,133 @@ class OrchestratorAgent:
     async def _handle_order_taking_executor(self, step_input: StepInput) -> StepOutput:
         logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _handle_order_taking_executor")
         logger.info("EXECUTOR: Executing _handle_order_taking_executor com ProductService (Lógica Aprimorada).")
+        
         order_state: OrderState = step_input.additional_data.get("order_state")
         receptionist_output: AnaliseDeIntencao = step_input.additional_data.get('receptionist_output')
+        confirmation_messages = []
 
         if not isinstance(receptionist_output, AnaliseDeIntencao) or not receptionist_output.tarefas:
             logger.warning("Input para order_taking_executor não é uma tarefa válida.")
-            return StepOutput(content={})
+            return StepOutput(content="")
 
-        task = receptionist_output.tarefas[0]
         product_service = ProductService(db=self.db, tenant_id=self.tenant_id)
 
-        if task.tipo_tarefa == 'adicionar_item':
-            if not task.detalhes:
-                logger.warning("Tentativa de adicionar item sem detalhes (nome do produto).")
-                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja adicionar."
-                return StepOutput(content="Clarificação necessária.")
+        for task in receptionist_output.tarefas:
+            task_type = task.tipo_tarefa
+            details = task.detalhes
 
-            search_criteria = schemas.BuscaDeProduto(termos_gerais=task.detalhes.split())
-            found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=search_criteria)
+            if task_type == 'adicionar_item':
+                if not details:
+                    continue
 
-            if len(found_products) == 1:
-                found_product = found_products[0]
-                logger.info(f"Produto encontrado via ProductService: {found_product.nome_produto}. Adicionando ao pedido.")
-                order_item = schemas.OrderItem(
-                    product_id=found_product.id_produto,
-                    product_name=found_product.nome_produto,
-                    quantity=task.quantidade or 1,
-                    unit_price=found_product.preco_base,
-                    total_price=(found_product.preco_base * (task.quantidade or 1))
-                )
-                order_state.items.append(order_item)
-                step_input.additional_data["product_added_successfully"] = True
-                step_input.additional_data["response_text_override"] = f"Adicionado {found_product.nome_produto} ao seu pedido."
-            elif len(found_products) > 1:
-                product_names = [p.nome_produto for p in found_products]
-                clarification_msg = f"Encontrei mais de uma opção para '{task.detalhes}': {', '.join(product_names)}. Qual deles você gostaria?"
-                logger.warning(f"Ambiguidade na busca de produto: {clarification_msg}")
-                step_input.additional_data["clarification_needed"] = clarification_msg
-                step_input.additional_data["response_text_override"] = clarification_msg
-            else:
-                logger.warning(f"Produto não encontrado para '{task.detalhes}'.")
-                step_input.additional_data["product_not_found"] = True
-                step_input.additional_data["response_text_override"] = f"Desculpe, não encontrei '{task.detalhes}' no cardápio."
+                search_criteria = None
+                if isinstance(details, str):
+                    search_criteria = schemas.BuscaDeProduto(termos_gerais=details.split())
+                elif isinstance(details, dict):
+                    search_criteria = schemas.BuscaDeProduto(**details)
+                elif isinstance(details, schemas.BuscaDeProduto):
+                    search_criteria = details
+                
+                if not search_criteria:
+                    continue
 
-        elif task.tipo_tarefa == 'remover_item':
-            if not task.detalhes:
-                logger.warning("Tentativa de remover item sem detalhes (nome do produto).")
-                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja remover."
-                return StepOutput(content="Clarificação necessária.")
+                found_products = await run_in_threadpool(product_service.find_product_filtered, search_criteria=search_criteria)
 
-            item_removed = False
-            for i in range(len(order_state.items) - 1, -1, -1):
-                similarity = token_set_ratio(task.detalhes, order_state.items[i].product_name)
-                if similarity > 85:
-                    logger.info(f"Removendo item '{order_state.items[i].product_name}' do pedido.")
-                    del order_state.items[i]
-                    item_removed = True
-                    step_input.additional_data["response_text_override"] = f"Removido {task.detalhes} do seu pedido."
-                    break
-            if not item_removed:
-                step_input.additional_data["item_not_found_in_order"] = True
-                step_input.additional_data["response_text_override"] = f"Não encontrei '{task.detalhes}' no seu pedido."
-            step_input.additional_data["item_removed_successfully"] = item_removed
+                if len(found_products) == 1:
+                    found_product = found_products[0]
+                    logger.info(f"Produto encontrado: {found_product.nome_produto}. Adicionando ao pedido.")
+                    order_item = schemas.OrderItem(
+                        product_id=found_product.id_produto,
+                        product_name=found_product.nome_produto,
+                        quantity=getattr(task, 'quantidade', 1) or 1,
+                        unit_price=found_product.preco_base,
+                        total_price=(found_product.preco_base * (getattr(task, 'quantidade', 1) or 1))
+                    )
+                    order_state.items.append(order_item)
+                    confirmation_messages.append(f"Item '{found_product.nome_produto}' adicionado.")
 
-        elif task.tipo_tarefa == 'modificar_item':
-            if not task.detalhes:
-                logger.warning("Tentativa de modificar item sem detalhes.")
-                step_input.additional_data["clarification_needed"] = "Por favor, especifique qual item você deseja modificar e como."
-                return StepOutput(content="Clarificação necessária.")
-            
-            logger.info(f"Tentativa de modificar item: {task.detalhes}. Funcionalidade ainda não totalmente implementada.")
-            step_input.additional_data["response_text_override"] = f"Desculpe, a modificação de '{task.detalhes}' ainda não é suportada."
+            elif task_type == 'remover_item':
+                if not details:
+                    continue
+                
+                item_name_to_remove = details if isinstance(details, str) else " ".join(details.get("termos_gerais", []))
+                logger.info(f"Tentando remover o item: '{item_name_to_remove}'. Estado atual do pedido: {[item.product_name for item in order_state.items]}")
 
-        elif task.tipo_tarefa == 'confirmar_pedido':
-            logger.info("Finalizando o pedido.")
-            order_state.is_finalized = True
-            if order_state.items:
-                summary_lines = [f"{item.quantity}x {item.product_name}" for item in order_state.items]
-                total_price = sum(item.total_price for item in order_state.items)
-                order_summary_text = f"Seu pedido atual: {'; '.join(summary_lines)}. Total: R$ {total_price:.2f}."
-                step_input.additional_data["order_summary_for_confirmation"] = order_summary_text
-                step_input.additional_data["response_text_override"] = order_summary_text + " Confirma?"
-            else:
-                step_input.additional_data["response_text_override"] = "Seu pedido está vazio. Gostaria de adicionar algo?"
+                item_removed = False
+                for i in range(len(order_state.items) - 1, -1, -1):
+                    if token_set_ratio(item_name_to_remove, order_state.items[i].product_name) > 85:
+                        logger.info(f"Item '{order_state.items[i].product_name}' encontrado para remoção.")
+                        removed_item_name = order_state.items[i].product_name
+                        del order_state.items[i]
+                        item_removed = True
+                        confirmation_messages.append(f"Item '{removed_item_name}' removido.")
+                        break
+                
+                if item_removed:
+                    logger.info(f"Item removido. Estado do pedido após remoção: {[item.product_name for item in order_state.items]}")
+                else:
+                    logger.warning(f"Não foi possível encontrar o item '{item_name_to_remove}' no pedido para remoção.")
+                    confirmation_messages.append(f"Não encontrei o item '{item_name_to_remove}' no seu pedido.")
+
+            elif task_type == 'aceitar_oferta':
+                promo_id = order_state.last_offered_promotion_id
+                if not promo_id:
+                    confirmation_messages.append("Desculpe, não encontrei uma oferta para aceitar.")
+                    continue
+
+                logger.info(f"Usuário aceitou a oferta da promoção ID: {promo_id}")
+                promocao = await run_in_threadpool(promocao_crud.get_promocao, self.db, promo_id)
+
+                if promocao and promocao.acao_json:
+                    acao = promocao.acao_json
+                    if acao.get("tipo_desconto") == "brinde":
+                        # Assumindo que o nome da promoção descreve o brinde
+                        brinde_item = schemas.OrderItem(
+                            product_id=0, # ID 0 para itens que não são do cardápio
+                            product_name=promocao.nome_promocao,
+                            quantity=1,
+                            unit_price=0.0,
+                            total_price=0.0
+                        )
+                        order_state.items.append(brinde_item)
+                        confirmation_messages.append(f"Ótimo! Adicionei seu brinde: {promocao.nome_promocao}.")
+                    else:
+                        # Lógica para outros tipos de promoção (desconto, etc.) pode ser adicionada aqui
+                        confirmation_messages.append(f"Promoção '{promocao.nome_promocao}' aplicada!")
+                
+                # Limpa a oferta para não ser aceita novamente
+                order_state.last_offered_promotion_id = None
+
+            elif task_type == 'confirmar_pedido':
+                if order_state.status == "confirmed":
+                    continue
+
+                logger.info("Finalizando o pedido.")
+                order_state.status = "confirmed"
+                confirmation_messages.append("Pedido confirmado com sucesso.")
+                
+                try:
+                    total_price = sum(item.total_price for item in order_state.items)
+                    items_to_send = [item.model_dump() for item in order_state.items]
+                    address_to_send = order_state.address
+
+                    await save_order_to_platform(
+                        user_id=self.user_id,
+                        tenant_id=self.tenant_id,
+                        items=items_to_send,
+                        total_price=total_price,
+                        db=self.db,
+                        address=address_to_send
+                    )
+                    logger.info(f"Pedido enviado com sucesso para a plataforma.")
+                except Exception as e:
+                    logger.error(f"Falha ao enviar pedido para a plataforma: {e}", exc_info=True)
+                    confirmation_messages.append("Tive um problema ao finalizar seu pedido na plataforma.")
 
         step_input.additional_data["order_state"] = order_state
-        return StepOutput(content={})
+        final_confirmation = ". ".join(confirmation_messages)
+        step_input.additional_data["confirmation_message"] = final_confirmation # Adiciona a confirmação ao contexto
+        return StepOutput(content=final_confirmation)
 
     async def _route_to_data_collection_step(self, step_input: StepInput) -> Union[Step, List[Step]]:
         logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _route_to_data_collection_step")
@@ -485,41 +713,50 @@ class OrchestratorAgent:
             logger.warning("Recepcionista não retornou tarefas. Usando RAG como fallback.")
             return self.rag_search_step
 
-        # Por enquanto, vamos processar apenas a primeira tarefa da lista.
-        primeira_tarefa = receptionist_output.tarefas[0]
-        task_type = primeira_tarefa.tipo_tarefa
-        details = primeira_tarefa.detalhes
+        task_types = {t.tipo_tarefa for t in receptionist_output.tarefas}
+        
+        # Prioridade 0: Se for apenas uma saudação, rota exclusiva.
+        if 'saudacao' in task_types and len(task_types) == 1:
+            logger.info("Roteando para a rota de saudação.")
+            # O executor do greeting_step retorna uma FinalResponseData, então o workflow termina aqui.
+            return self.greeting_step
 
-        logger.info(f"Roteando para a primeira tarefa da lista: {task_type}")
+        # Lógica de roteamento baseada nas tarefas identificadas
+        steps_to_run = []
 
-        if task_type == 'menu':
-            return self.menu_step
+        # Prioridade 1: Se o cálculo de frete ou fechamento de conta for solicitado, essa rota é acionada.
+        if 'calcular_frete' in task_types or 'fechar_conta' in task_types:
+            logger.info("Priorizando rota de geocodificação e cálculo de frete.")
+            steps_to_run.extend([self.geocode_step, self.freight_calculation_step])
+            # Remove as tarefas para não serem processadas novamente
+            task_types.discard('calcular_frete')
+            task_types.discard('fechar_conta')
 
-        if task_type == 'buscar_produto':
-            if isinstance(details, dict):
-                search_criteria = schemas.BuscaDeProduto(**details)
-                step_input.additional_data['receptionist_output'] = search_criteria
-            else:
-                step_input.additional_data['receptionist_output'] = schemas.BuscaDeProduto(termos_gerais=str(details).split())
-            return self.product_search_step
+        # Processa as tarefas restantes
+        if task_types:
+            # Mapeia os tipos de tarefa restantes para seus respectivos steps
+            task_map = {
+                'falar_com_humano': self.human_handoff_step,
+                'adicionar_item': self.order_taking_step,
+                'remover_item': self.order_taking_step,
+                'confirmar_pedido': self.order_taking_step,
+                'aceitar_oferta': self.order_taking_step,
+                'menu': self.menu_step,
+                'buscar_produto': self.product_search_step,
+                'horario_funcionamento': self.rag_search_step
+            }
+            # Adiciona os steps correspondentes às tarefas restantes, evitando duplicatas
+            for task in task_types:
+                if task in task_map and task_map[task] not in steps_to_run:
+                    steps_to_run.append(task_map[task])
 
-        if task_type == 'calcular_frete':
-            return [self.geocode_step, self.freight_calculation_step]
+        # Se, após tudo, nenhuma rota foi definida, usa o RAG como fallback.
+        if not steps_to_run:
+            logger.info("Nenhuma rota específica para as tarefas encontradas, usando o rag_search_step como fallback.")
+            return self.rag_search_step
 
-        task_map = {
-            'falar_com_humano': self.human_handoff_step,
-            'adicionar_item': self.order_taking_step,
-            'remover_item': self.order_taking_step,
-            'confirmar_pedido': self.order_taking_step,
-            'horario_funcionamento': self.rag_search_step
-        }
-
-        selected_step = task_map.get(task_type)
-        if selected_step:
-            return selected_step
-
-        logger.info(f"Nenhuma rota específica para a tarefa '{task_type}' encontrada, usando o rag_search_step como fallback.")
-        return self.rag_search_step
+        logger.info(f"Roteando para a seguinte sequência de steps: {[s.name for s in steps_to_run]}")
+        return steps_to_run
 
     async def _execute_rag_search(self, step_input: StepInput) -> StepOutput:
         logger.debug(f"ORCHESTRATOR_FLOW: [{self.session_id}] - Entering _execute_rag_search")

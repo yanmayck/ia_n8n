@@ -68,7 +68,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
 
         ai_result = await chat_handler.handle_message( # Corrected function call
             user_id=ai_request.user_phone,
-            session_id=ai_request.whatsapp_message_id,
+            whatsapp_message_id=ai_request.whatsapp_message_id, # Passando o ID da mensagem
             message=ai_request.message_user,
             tenant_id=ai_request.tenant_id,
             personality_prompt=personality_prompt,
@@ -81,10 +81,11 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
 
         logger.info(f"Resposta Estruturada da IA: {ai_result}")
 
+        # A resposta do chat_handler agora é um objeto AIResponse, então podemos usá-lo diretamente
         response_parts = []
-        text_response = ai_result.get("response_text")
-        human_handoff = ai_result.get("human_handoff", False)
-        send_menu = ai_result.get("send_menu", False)
+        text_response = ai_result.response_text
+        human_handoff = ai_result.human_handoff
+        send_menu = ai_result.send_menu
 
         if not isinstance(text_response, str):
             text_response = str(text_response)

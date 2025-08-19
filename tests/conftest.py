@@ -6,6 +6,8 @@ import os
 import sys
 from unittest.mock import patch
 from dotenv import load_dotenv
+import redis
+import logging
 
 # --- CONFIGURAÇÃO DO AMBIENTE DE TESTE ---
 # Este bloco é executado ANTES de qualquer outra importação ou fixture.
@@ -18,16 +20,11 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # 3. Carrega as variáveis de ambiente do .env.test
-# O pytest, por padrão, executa a partir da raiz do projeto, então o caminho é relativo a ela.
 dotenv_path = os.path.join(project_root, '.env.test')
 if os.path.exists(dotenv_path):
     load_dotenv(dotenv_path=dotenv_path)
 else:
-    # Fallback se o .env.test não for encontrado no local esperado
-    # Isso pode acontecer dependendo de como o pytest é invocado.
-    # Tentamos carregar a partir do diretório atual, que deve ser a raiz do projeto.
     load_dotenv(dotenv_path=".env.test")
-
 
 # 4. AGORA, com o ambiente configurado, podemos importar os módulos da aplicação
 from core.database import Base
@@ -41,6 +38,8 @@ from services import data_sync_service
 TEST_DATABASE_URL = os.getenv("DATABASE_URL")
 if not TEST_DATABASE_URL:
     raise ValueError("DATABASE_URL não encontrada no arquivo .env.test. Verifique o caminho e a configuração.")
+
+logger = logging.getLogger(__name__)
 
 # Engine é criado uma vez para toda a sessão de testes
 engine = create_engine(TEST_DATABASE_URL)
@@ -62,26 +61,34 @@ def setup_database():
     alembic_cfg.set_main_option("script_location", os.path.join(project_root, "alembic"))
     alembic_cfg.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
 
-    # Garante que o banco de dados esteja limpo e atualizado
-    command.downgrade(alembic_cfg, "base")
     command.upgrade(alembic_cfg, "head")
-
     yield
-
-    # Limpa o banco de dados após a execução de todos os testes
     command.downgrade(alembic_cfg, "base")
     engine.dispose()
 
-import logging
-
-# ... (o resto das importações)
-
-logger = logging.getLogger(__name__)
-
-# ... (o resto do código até a fixture)
+@pytest.fixture(scope="function", autouse=True)
+def clear_redis_cache():
+    """
+    Fixture para limpar o cache do Redis de teste antes de cada teste.
+    O autouse=True garante que será executado para cada função de teste.
+    """
+    logger.info("FIXTURE_TRACE: Limpando o cache do Redis de teste.")
+    try:
+        redis_host = os.getenv("REDIS_HOST", "localhost")
+        redis_port = int(os.getenv("REDIS_PORT"))
+        redis_password = os.getenv("REDIS_PASSWORD") or None
+        
+        r = redis.Redis(host=redis_host, port=redis_port, password=redis_password)
+        r.flushdb()
+        logger.info("FIXTURE_TRACE: Cache do Redis limpo com sucesso.")
+    except (redis.exceptions.ConnectionError, TypeError) as e:
+        logger.error(f"FIXTURE_TRACE: Não foi possível conectar ao Redis para limpar o cache: {e}")
+        pytest.fail(f"Não foi possível conectar ao Redis em {redis_host}:{redis_port}. O teste não pode continuar.")
+    
+    yield
 
 @pytest.fixture(scope="function")
-def db_session():
+def db_session(clear_redis_cache):
     """
     Cria uma nova sessão de banco de dados para cada teste, dentro de uma transação.
     A transação é revertida no final do teste, isolando-o.
@@ -105,21 +112,24 @@ def db_session():
         connection.close()
         logger.info("FIXTURE_TRACE: 8. Conexão com o engine fechada. Fim da fixture.")
 
+import httpx
 
 @pytest.fixture(scope="function")
-def client(db_session: Session):
+async def client(db_session: Session):
     """
-    Cria um cliente de teste para a API e sobrescreve a dependência do DB
+    Cria um cliente de teste assíncrono para a API e sobrescreve a dependência do DB
     para usar a sessão de teste transacional.
     """
-    # Muda para o diretório raiz do projeto para que o StaticFiles encontre a pasta 'templates'
     os.chdir(project_root)
     
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as async_client:
+        yield async_client
+        
     del app.dependency_overrides[get_db]
 
 @pytest.fixture(scope="function")
@@ -150,9 +160,6 @@ async def test_tenant(db_session: Session):
     """
     tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja=conteudo_loja_para_teste)
     
-    # Carrega os dados do tenant no banco de vetores
     await data_sync_service.load_data_to_vector_db(db_session, tenant.tenant_id)
     
     return tenant
-
-

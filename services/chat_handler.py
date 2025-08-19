@@ -63,7 +63,7 @@ async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrato
 
 async def handle_message( 
     user_id: str, 
-    session_id: str, 
+    whatsapp_message_id: str, 
     message: str, 
     tenant_id: str, 
     personality_prompt: str,
@@ -73,13 +73,14 @@ async def handle_message(
     client_latitude: float = None,
     client_longitude: float = None
 ):
-    logger.info(f"HANDLE_MESSAGE_TRACE: Iniciando handle_message para session_id: {session_id}")
-    logger.info(f"HANDLE_MESSAGE_TRACE: Nova sessão de DB criada em handle_message: {db}")
+    logger.info(f"HANDLE_MESSAGE_TRACE: Iniciando handle_message para user_id: {user_id}, whatsapp_message_id: {whatsapp_message_id}")
     try:
-        is_duplicate = await run_in_threadpool(interaction_crud.get_interaction_by_whatsapp_id, db, whatsapp_message_id=session_id)
+        # A verificação de duplicados usa o ID da mensagem do WhatsApp
+        is_duplicate = await run_in_threadpool(interaction_crud.get_interaction_by_whatsapp_id, db, whatsapp_message_id=whatsapp_message_id)
         if is_duplicate:
-            logger.warning(f"Mensagem duplicada recebida (ID: {session_id}). Ignorando.")
-            return {"text": "Mensagem já processada.", "human_handoff": False, "send_menu": False}
+            logger.warning(f"Mensagem duplicada recebida (ID: {whatsapp_message_id}). Ignorando.")
+            # Retorna um objeto compatível com a resposta esperada pela API
+            return AIResponse(response_text="Mensagem já processada.", human_handoff=False, send_menu=False)
 
         tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, tenant_id=tenant_id)
         if not tenant:
@@ -87,9 +88,10 @@ async def handle_message(
 
         async def orchestrator_call(api_key: str):
             logger.info(f"CHAT_HANDLER: Preparando para chamar o OrchestratorAgent com a chave que termina em '...{api_key[-4:]}'.")
+            # A sessão do orquestrador é baseada no ID do usuário (telefone) para manter o estado
             orchestrator = OrchestratorAgent(
                 db=db,
-                session_id=session_id,
+                session_id=user_id, # MUDANÇA CRÍTICA: A sessão é o usuário
                 tenant_id=tenant.tenant_id,
                 user_id=user_id,
                 api_key=api_key
@@ -108,9 +110,10 @@ async def handle_message(
         ai_response_text = ai_response_obj.response_text
         personality_id = tenant.personality.id if tenant.personality else None
 
+        # O registro da interação continua usando o ID único da mensagem do WhatsApp
         new_interaction = InteractionCreate(
             user_phone=user_id,
-            whatsapp_message_id=session_id,
+            whatsapp_message_id=whatsapp_message_id,
             message_from_user=message,
             ai_response=ai_response_text,
             personality_id=personality_id,
@@ -118,7 +121,7 @@ async def handle_message(
         )
         await run_in_threadpool(interaction_crud.create_interaction, db, interaction=new_interaction)
         
-        return ai_response_obj.model_dump()
+        return ai_response_obj
 
     except (ValueError, ModelProviderError) as e:
         logger.error(f"Erro de lógica ou provedor de modelo em handle_message: {e}", exc_info=True)

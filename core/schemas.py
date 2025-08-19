@@ -229,8 +229,11 @@ class GeneralResponseOutput(BaseModel):
     text_response: str
 
 class OrderItem(BaseModel):
+    product_id: int
     product_name: str
     quantity: int
+    unit_price: float
+    total_price: float
 
 class OrderTakingOutput(BaseModel):
     items: List[OrderItem]
@@ -238,9 +241,11 @@ class OrderTakingOutput(BaseModel):
     address: Optional[str] = None
 
 class OrderState(BaseModel):
-    items: List[OrderItem] = []
+    items: List[OrderItem] = Field(default_factory=list)
     address: Optional[str] = None
     status: str = "open"
+    promocoes_oferecidas_ids: List[int] = Field(default_factory=list)
+    last_offered_promotion_id: Optional[int] = None
 
 # =======================================================================
 # Esquemas para Interação com o Banco de Dados

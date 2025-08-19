@@ -27,7 +27,7 @@ async def save_order_to_platform(user_id: str, tenant_id: str, items: List[Dict]
 
         platform_url = f"{tenant.url}/api/pedidos"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
             # Idealmente, a chamada para a outra API também seria autenticada.
             response = await client.post(platform_url, json=order_data)
             response.raise_for_status()
