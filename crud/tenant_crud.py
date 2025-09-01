@@ -9,7 +9,11 @@ def get_tenant_by_id(db: Session, tenant_id: str):
     logger.info(f"Buscando tenant no DB com ID: {tenant_id} e carregando personalidade associada.")
     return db.query(models.Tenant).options(joinedload(models.Tenant.personality)).filter(models.Tenant.tenant_id == tenant_id).first()
 
-def create_tenant(db: Session, tenant: schemas.TenantCreate, conteudo_loja: str):
+def get_tenant_by_instance_name(db: Session, instance_name: str):
+    logger.info(f"Buscando tenant no DB com evolution_instance_name: {instance_name}")
+    return db.query(models.Tenant).options(joinedload(models.Tenant.personality)).filter(models.Tenant.evolution_instance_name == instance_name).first()
+
+def create_tenant(db: Session, tenant: schemas.TenantCreate, conteudo_loja: str, evolution_instance_name: str):
     from .personality_crud import create_personality, get_personality_by_name
 
     # Validação de ID duplicado
@@ -31,6 +35,7 @@ def create_tenant(db: Session, tenant: schemas.TenantCreate, conteudo_loja: str)
         tenant_id=tenant.tenant_id,
         nome_loja=tenant.nome_loja,
         config_ai=conteudo_loja,
+        evolution_instance_name=evolution_instance_name, # Adicionado
         is_active=True,
         personality=db_personality,
         endereco=tenant.endereco,

@@ -24,3 +24,19 @@ def delete_menu_image(db: Session, image_id: int):
         db.delete(db_menu_image)
         db.commit()
     return db_menu_image
+
+def replace_all_images_for_tenant(db: Session, tenant_id: str, images_data: List[schemas.MenuImageCreate]):
+    """
+    Deleta todas as imagens de menu existentes de um tenant e insere as novas.
+    """
+    db.query(models.MenuImage).filter(models.MenuImage.tenant_id == tenant_id).delete(synchronize_session=False)
+    
+    new_images = []
+    for img_data in images_data:
+        new_img = models.MenuImage(**img_data.model_dump(), tenant_id=tenant_id)
+        new_images.append(new_img)
+        
+    if new_images:
+        db.bulk_save_objects(new_images)
+    
+    db.commit()

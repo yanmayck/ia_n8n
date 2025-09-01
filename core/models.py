@@ -22,6 +22,7 @@ class Tenant(Base):
     tenant_id = Column(String, unique=True, index=True, nullable=False)
     nome_loja = Column(String, nullable=False)
     config_ai = Column(Text, nullable=False)
+    evolution_instance_name = Column(String, unique=True, index=True, nullable=True) # Campo para o nome da instância
     evolution_api_key = Column(String)
     is_active = Column(Boolean, default=True)
     id_pronpt = Column(Integer)

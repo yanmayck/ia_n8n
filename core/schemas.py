@@ -99,12 +99,14 @@ class TenantBase(BaseModel):
 class TenantCreate(BaseModel):
     tenant_id: str
     nome_loja: str
+    evolution_instance_name: Optional[str] = None # Adicionado
     ia_personality: str
     ai_prompt_description: str
     endereco: str
     cep: str
     latitude: float
     longitude: float
+    config_ai: str
     url: Optional[str] = None
     freight_config: Optional[str] = None
 
@@ -363,3 +365,25 @@ class TarefaIdentificada(BaseModel):
 class AnaliseDeIntencao(BaseModel):
     tarefas: List[TarefaIdentificada] = Field(description="Uma lista de todas as tarefas que o usuário quer executar.")
     contem_urgencia: bool = Field(default=False, description="Verdadeiro se o usuário parece apressado ou frustrado.")
+
+# =======================================================================
+# Esquemas para Sincronização via Webhook
+# =======================================================================
+class WebhookMenu(BaseModel):
+    produtos: List[ProductCreate]
+    opcionais: List[OpcionalCreate]
+    promocoes: List[PromocaoCreate]
+    imagens: List[MenuImageCreate] = []
+
+class WebhookTenantData(TenantCreate):
+    # Reutiliza e estende o TenantCreate para incluir o menu
+    id: str # O ID do tenant no sistema de origem
+    evolution_instance_name: Optional[str] = None
+    is_active: bool
+    api_keys: List[TenantAPIKeyCreate]
+    menu: WebhookMenu
+
+class WebhookPayload(BaseModel):
+    event_type: str # Ex: "TENANT_CREATED", "TENANT_UPDATED"
+    timestamp: datetime
+    tenant_data: WebhookTenantData

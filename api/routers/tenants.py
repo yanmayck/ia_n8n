@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 
 @router.post("/tenants/config", response_model=schemas.Tenant, tags=["Tenants"], dependencies=[Depends(get_current_user)])
 def get_tenant_config(request: schemas.TenantConfigRequest, db: Session = Depends(get_db)):
-    tenant = tenant_crud.get_tenant_by_id(db, tenant_id=request.instancia)
+    # Altera a busca para usar o nome da instância em vez do ID do tenant
+    tenant = tenant_crud.get_tenant_by_instance_name(db, instance_name=request.instancia)
     if not tenant or not tenant.is_active:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente não encontrado ou inativo.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente não encontrado ou inativo para a instância fornecida.")
     return tenant
 
 @router.post("/tenant-instancia/", dependencies=[Depends(get_current_user)])

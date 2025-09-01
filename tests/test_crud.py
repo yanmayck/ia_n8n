@@ -18,13 +18,33 @@ def test_create_tenant(db_session: Session):
     )
     conteudo_loja = "Informações da loja de teste."
     
-    tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja)
+    tenant = tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja, evolution_instance_name="test_instance_name")
     
     assert tenant.tenant_id == "test_tenant"
     assert tenant.nome_loja == "Test Store"
     assert tenant.config_ai == conteudo_loja
+    assert tenant.evolution_instance_name == "test_instance_name"
     assert tenant.personality is not None
     assert tenant.personality.name == "test_personality"
+
+def test_get_tenant_by_instance_name(db_session: Session):
+    # Crie um tenant para buscar pela instância
+    personality_data = schemas.PersonalityCreate(name="instance_test_personality", prompt="instance prompt")
+    tenant_data = schemas.TenantCreate(
+        tenant_id="instance_tenant_id",
+        nome_loja="Instance Test Store",
+        ia_personality=personality_data.name,
+        ai_prompt_description=personality_data.prompt,
+        endereco="789 Instance St",
+        cep="54321-876",
+        latitude=-20.0,
+        longitude=-40.0
+    )
+    tenant_crud.create_tenant(db_session, tenant_data, "info", evolution_instance_name="my_whatsapp_instance")
+
+    fetched_tenant = tenant_crud.get_tenant_by_instance_name(db_session, "my_whatsapp_instance")
+    assert fetched_tenant is not None
+    assert fetched_tenant.tenant_id == "instance_tenant_id"
 
 def test_get_tenant_by_id(db_session: Session):
     # Primeiro, crie um tenant para buscar

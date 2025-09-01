@@ -138,25 +138,26 @@ def get_product_by_name_and_tenant(db: Session, name: str, tenant_id: str) -> mo
         models.Product.tenant_id == tenant_id
     ).first()
 
-def replace_all_products_for_tenant(db: Session, tenant_id: str, products_data: List[dict]):
+def replace_all_products_for_tenant(db: Session, tenant_id: str, products_data: List[schemas.ProductCreate]):
     """
     Deleta todos os produtos existentes de um tenant e insere os novos.
     """
-    # Deleta os produtos antigos
     db.query(models.Product).filter(models.Product.tenant_id == tenant_id).delete(synchronize_session=False)
     
-    # Insere os novos produtos
     new_products = []
     for prod_data in products_data:
         new_prod = models.Product(
             tenant_id=tenant_id,
-            nome_produto=prod_data.get('nome'),
-            descricao_produto=prod_data.get('descricao'),
-            categoria_produto=prod_data.get('categoria'),
-            preco_base=prod_data.get('preco'),
-            # Adicione outros campos conforme necessário
+            nome_produto=prod_data.nome_produto,
+            descricao_produto=prod_data.descricao_produto,
+            categoria_produto=prod_data.categoria_produto,
+            preco_base=prod_data.preco_base,
+            tempo_preparo_min=prod_data.tempo_preparo_min,
+            disponivel_hoje=prod_data.disponivel_hoje
         )
         new_products.append(new_prod)
         
-    db.bulk_save_objects(new_products)
+    if new_products:
+        db.bulk_save_objects(new_products)
+    
     db.commit()

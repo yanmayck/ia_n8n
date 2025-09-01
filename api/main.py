@@ -9,7 +9,7 @@ from starlette.staticfiles import StaticFiles
 from core.logging_config import LOGGING_CONFIG
 from core import models
 from core.database import engine
-from api.routers import tenants, ai, personalities, products, authentication, opcionais, promocoes, api_keys
+from api.routers import tenants, ai, personalities, products, authentication, opcionais, promocoes, api_keys, sync
 
 # Configuração de Logging
 # dictConfig(LOGGING_CONFIG)
@@ -72,6 +72,7 @@ app.include_router(products.router)
 app.include_router(opcionais.router)
 app.include_router(promocoes.router)
 app.include_router(api_keys.router)
+app.include_router(sync.router) # Rota de sincronização
 
 def print_application_routes():
     """Imprime todas as rotas disponíveis na inicialização da aplicação."""

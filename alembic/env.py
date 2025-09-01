@@ -1,8 +1,13 @@
 import os
 import sys
+from dotenv import load_dotenv
+
+# Adiciona o caminho raiz do projeto para encontrar o .env.test
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+load_dotenv(dotenv_path=os.path.join(project_root, '.env.test'))
 
 # Adicione o caminho raiz do projeto no contêiner ao sys.path
-sys.path.append('/app')
+sys.path.append(project_root)
 
 from logging.config import fileConfig
 

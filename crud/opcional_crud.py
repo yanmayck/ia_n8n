@@ -37,7 +37,7 @@ def delete_opcional(db: Session, opcional_id: int):
         db.commit()
     return db_opcional
 
-def replace_all_opcionais_for_tenant(db: Session, tenant_id: str, opcionais_data: List[dict]):
+def replace_all_opcionais_for_tenant(db: Session, tenant_id: str, opcionais_data: List[schemas.OpcionalCreate]):
     """
     Deleta todos os opcionais existentes de um tenant e insere os novos.
     """
@@ -47,11 +47,13 @@ def replace_all_opcionais_for_tenant(db: Session, tenant_id: str, opcionais_data
     for opc_data in opcionais_data:
         new_opc = models.Opcional(
             tenant_id=tenant_id,
-            nome_opcional=opc_data.get('nome'),
-            tipo_opcional=opc_data.get('tipo'),
-            preco_adicional=opc_data.get('preco_adicional')
+            nome_opcional=opc_data.nome_opcional,
+            tipo_opcional=opc_data.tipo_opcional,
+            preco_adicional=opc_data.preco_adicional
         )
         new_opcionais.append(new_opc)
         
-    db.bulk_save_objects(new_opcionais)
+    if new_opcionais:
+        db.bulk_save_objects(new_opcionais)
+
     db.commit()
