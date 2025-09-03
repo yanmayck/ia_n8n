@@ -1,5 +1,3 @@
-import base64
-import os
 import logging
 import asyncio
 import json
@@ -11,8 +9,8 @@ from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 from thefuzz.fuzz import token_set_ratio
 
-from agno.agent import Agent, RunResponse
-from agno.models.google import Gemini
+from agno.agent import RunResponse
+
 from agno.memory.v2.memory import Memory
 from agno.media import Audio, Image, Video
 from agno.workflow.v2.workflow import Workflow, WorkflowRunResponse
@@ -25,14 +23,14 @@ from core.database import DATABASE_URL
 from core.schemas import (
     AIResponse, FinalResponseData, AnaliseDeIntencao, BuscaDeProduto, OrderState, TarefaIdentificada, FreightDetails
 )
-from crud import tenant_crud, product_crud, user_address_crud, promocao_crud
+from crud import tenant_crud, product_crud, promocao_crud
 from agno.memory.v2.db.postgres import PostgresMemoryDb
 from core.vector_db import VectorDBManager
 from services.agents.receptionist_agent import get_receptionist_agent
 from services.agents.order_taking_agent import get_order_taking_agent
 from services.agents.response_formulation_agent import get_response_formulation_agent
 from services.agents.file_understanding_agent import get_file_understanding_agent
-from services.tools.product import ferramenta_busca_avancada_produtos, get_contextual_suggestions_tool, get_applicable_promotions_tool
+from services.tools.product import get_contextual_suggestions_tool, get_applicable_promotions_tool
 from services.tools.geolocation import geocode_address, freight_calculator
 from services.integrations.platform_client import save_order_to_platform
 from services.business_logic.product_service import ProductService

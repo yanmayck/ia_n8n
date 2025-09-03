@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 async def save_order_to_platform(user_id: str, tenant_id: str, items: List[Dict], total_price: float, db: Session, address: Optional[str] = None, freight_details: Optional[Dict] = None):
     """
-    Envia o pedido confirmado para a plataforma de gestão.
+    Envia o pedido confirmado para a plataforma de gestão, formatando os itens para o formato esperado.
     """
     try:
         tenant = tenant_crud.get_tenant_by_id(db, tenant_id)
@@ -16,11 +16,19 @@ async def save_order_to_platform(user_id: str, tenant_id: str, items: List[Dict]
             logger.error(f"URL da plataforma de gestão não configurada para o tenant {tenant_id}")
             return
 
+        # Transforma a lista de itens para o formato esperado pela API do painel
+        itens_para_plataforma = [
+            {
+                "produto_id": item.get("product_id"),
+                "quantidade": item.get("quantity")
+            }
+            for item in items
+        ]
+
         order_data = {
             "cliente_contato": user_id,
-            "valor_total": total_price,
             "observacoes": "Pedido via IA",
-            "itens_pedido": items,
+            "itens_pedido": itens_para_plataforma, # Usa a lista transformada
             "endereco": address,
             "freight_details": freight_details
         }

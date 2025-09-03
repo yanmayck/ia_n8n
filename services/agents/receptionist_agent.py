@@ -1,8 +1,7 @@
 import logging
-from typing import Union
 from sqlalchemy.orm import Session # Adicionado
 from agno.models.google import Gemini
-from core.schemas import AnaliseDeIntencao, BuscaDeProduto, ModificacaoItem, TarefaIdentificada
+from core.schemas import AnaliseDeIntencao
 from services.agents.base_agent import BaseAgent # Nova importação
 
 logger = logging.getLogger(__name__)

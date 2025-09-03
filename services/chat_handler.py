@@ -1,20 +1,18 @@
 import os
 import logging
-import asyncio
-import json
-import re
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 from google.api_core import exceptions as google_exceptions
 
 from agno.exceptions import ModelProviderError
-
+from core.schemas import AIResponse
 from core.database import DATABASE_URL # Removed SessionLocal
 from crud import interaction_crud, tenant_crud, api_key_crud
 from core.schemas import InteractionCreate
 from services.main_orchestrator import OrchestratorAgent # Corrected import
 from agno.memory.v2.db.postgres import PostgresMemoryDb
 from sqlalchemy.orm import Session
+
 
 logger = logging.getLogger(__name__)
 

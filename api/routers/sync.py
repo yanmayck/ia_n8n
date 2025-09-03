@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.orm import Session
 import os
 
-from crud import tenant_crud, product_crud, opcional_crud, promocao_crud, api_key_crud
+from crud import tenant_crud, product_crud, opcional_crud, promocao_crud, api_key_crud, menu_image_crud
 from core import schemas
 from services import data_sync_service
 from api.dependencies import get_db
