@@ -1,16 +1,16 @@
-import os
-import logging
 import json
+import logging
 import re
-from agno.tools import tool
-from agno.tools.sql import SQLTools
-from sqlalchemy import text
-from agno.agent import Agent
 from typing import List
 
+from agno.agent import Agent
+from agno.tools import tool
+from agno.tools.sql import SQLTools
 from core.database import DATABASE_URL
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
+
 
 class TenantSafeSQLTools(SQLTools):
     def __init__(self, db_url: str, tenant_id: str):
@@ -26,11 +26,18 @@ class TenantSafeSQLTools(SQLTools):
         if "where" in query.lower():
             modified_query = f"{query} AND tenant_id = :tenant_id"
         else:
-            modified_query = re.sub(r'(from\s+[\w".]+)', r'\1 WHERE tenant_id = :tenant_id', query, flags=re.IGNORECASE)
+            modified_query = re.sub(
+                r'(from\s+[\w".]+)',
+                r"\1 WHERE tenant_id = :tenant_id",
+                query,
+                flags=re.IGNORECASE,
+            )
 
         params = {"tenant_id": self.tenant_id}
 
-        logger.info(f"Executing SQL query with tenant filter: {modified_query} with params: {params}")
+        logger.info(
+            f"Executing SQL query with tenant filter: {modified_query} with params: {params}"
+        )
         try:
             with self.db_engine.connect() as conn:
                 result = conn.execute(text(modified_query), params)
@@ -44,11 +51,14 @@ class TenantSafeSQLTools(SQLTools):
             logger.error(f"Error executing SQL query: {e}", exc_info=True)
             raise ValueError(f"Error executing SQL query: {e}")
 
+
 @tool
 def get_sql_query_tool(agent: Agent) -> List[TenantSafeSQLTools]:
     """Retorna uma lista de ferramentas SQL seguras para o tenant."""
     tenant_id = agent.session_state.get("tenant_id")
     if not tenant_id:
-        raise ValueError("O tenant_id não foi encontrado no estado da sessão do agente.")
-    
+        raise ValueError(
+            "O tenant_id não foi encontrado no estado da sessão do agente."
+        )
+
     return [TenantSafeSQLTools(db_url=DATABASE_URL, tenant_id=tenant_id)]

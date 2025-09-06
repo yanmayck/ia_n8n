@@ -1,25 +1,26 @@
-import logging
-import json
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
-from typing import List
-from pydantic import ValidationError
-from starlette.concurrency import run_in_threadpool
 import base64
-import mimetypes
-import httpx
+import json
+import logging
 import os
+from typing import List
 
-from crud import tenant_crud, interaction_crud, menu_image_crud
+import httpx
+from api.dependencies import get_current_user, get_db
 from core import schemas
-from services import chat_handler # Corrected import
-from services.integrations import google_maps_client, supabase_client # Corrected import
-from api.dependencies import get_db, get_current_user
-from core.database import SessionLocal
-
+from crud import menu_image_crud, tenant_crud
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import ValidationError
+from services import chat_handler  # Corrected import
+from services.integrations import (
+    google_maps_client,
+    supabase_client,
+)  # Corrected import
+from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
 
 @router.post("/ai", response_model=List[schemas.AIWebhookResponsePart], tags=["IA"])
 async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
@@ -27,7 +28,7 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
     try:
         request_body = await request.json()
         logger.info(f"RAW REQUEST BODY RECEIVED: {request_body}")
-        
+
         try:
             request_data = {
                 "message_user": request_body.get("message_user", ""),
@@ -37,46 +38,67 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
                 "user_phone": request_body.get("user_phone"),
                 "whatsapp_message_id": request_body.get("whatsapp_message_id"),
                 "latitude": request_body.get("latitude"),
-                "longitude": request_body.get("longitude")
+                "longitude": request_body.get("longitude"),
             }
             ai_request = schemas.AIWebhookRequest(**request_data)
-            logger.info(f"Request body validated successfully: {ai_request.model_dump_json(indent=2)}")
+            logger.info(
+                f"Request body validated successfully: {ai_request.model_dump_json(indent=2)}"
+            )
         except ValidationError as e:
             logger.error(f"PYDANTIC VALIDATION ERROR: {e.errors()}", exc_info=True)
             raise HTTPException(status_code=422, detail=e.errors())
 
-        tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, tenant_id=ai_request.tenant_id)
+        tenant = await run_in_threadpool(
+            tenant_crud.get_tenant_by_id, db, tenant_id=ai_request.tenant_id
+        )
         if not tenant or not tenant.is_active:
-            logger.error(f"Tenant com ID '{ai_request.tenant_id}' não encontrado ou inativo.")
-            raise HTTPException(status_code=404, detail=f"Cliente com o ID '{ai_request.tenant_id}' não foi encontrado ou está inativo.")
+            logger.error(
+                f"Tenant com ID '{ai_request.tenant_id}' não encontrado ou inativo."
+            )
+            raise HTTPException(
+                status_code=404,
+                detail=f"Cliente com o ID '{ai_request.tenant_id}' não foi encontrado ou está inativo.",
+            )
 
-        personality_prompt = tenant.personality.prompt if tenant.personality and tenant.personality.prompt else "Você é um assistente de IA prestativo."
-        logger.info(f"PROMPT DE PERSONALIDADE PARA O TENANT {ai_request.tenant_id}': {personality_prompt}")
-        
+        personality_prompt = (
+            tenant.personality.prompt
+            if tenant.personality and tenant.personality.prompt
+            else "Você é um assistente de IA prestativo."
+        )
+        logger.info(
+            f"PROMPT DE PERSONALIDADE PARA O TENANT {ai_request.tenant_id}': {personality_prompt}"
+        )
+
         file_content = None
         mimetype = None
         if ai_request.message_base64 and ai_request.mimetype:
             try:
                 file_content = base64.b64decode(ai_request.message_base64)
                 mimetype = ai_request.mimetype
-                logger.info(f"Mensagem com mídia recebida. Mimetype: {mimetype}, Tamanho: {len(file_content)} bytes")
+                logger.info(
+                    f"Mensagem com mídia recebida. Mimetype: {mimetype}, Tamanho: {len(file_content)} bytes"
+                )
             except (base64.binascii.Error, TypeError) as e:
-                logger.error(f"Erro ao decodificar a mensagem em base64: {e}", exc_info=True)
-        
-        logger.info(f"Chamando chat_handler.handle_message com os seguintes parâmetros:") # Corrected function call
+                logger.error(
+                    f"Erro ao decodificar a mensagem em base64: {e}", exc_info=True
+                )
+
+        logger.info(
+            "Chamando chat_handler.handle_message com os seguintes parâmetros:"
+        )  # Corrected function call
         # ... (logs de debug)
 
-        ai_result = await chat_handler.handle_message( # Corrected function call
+        ai_result = await chat_handler.handle_message(  # Corrected function call
             user_id=ai_request.user_phone,
-            whatsapp_message_id=ai_request.whatsapp_message_id, # Passando o ID da mensagem
+            whatsapp_message_id=ai_request.whatsapp_message_id,  # Passando o ID da mensagem
             message=ai_request.message_user,
             tenant_id=ai_request.tenant_id,
             personality_prompt=personality_prompt,
-            db=db, # Passando a sessão do DB
+            db=db,  # Passando a sessão do DB
             file_content=file_content,
             mimetype=mimetype,
             client_latitude=ai_request.latitude,
-            client_longitude=ai_request.longitude
+            client_longitude=ai_request.longitude,
         )
 
         logger.info(f"Resposta Estruturada da IA: {ai_result}")
@@ -91,47 +113,64 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
             text_response = str(text_response)
 
         if text_response:
-            response_parts.append({
-                "part_id": 1,
-                "type": "text",
-                "text_content": text_response,
-                "human_handoff": human_handoff,
-                "send_menu": send_menu
-            })
+            response_parts.append(
+                {
+                    "part_id": 1,
+                    "type": "text",
+                    "text_content": text_response,
+                    "human_handoff": human_handoff,
+                    "send_menu": send_menu,
+                }
+            )
 
         if send_menu:
-            latest_image = await run_in_threadpool(menu_image_crud.get_latest_menu_image_by_tenant, db, tenant.tenant_id)
+            latest_image = await run_in_threadpool(
+                menu_image_crud.get_latest_menu_image_by_tenant, db, tenant.tenant_id
+            )
             if latest_image and latest_image.image_url:
                 try:
                     async with httpx.AsyncClient() as client:
                         response = await client.get(latest_image.image_url)
                         response.raise_for_status()
-                        optimized_content = await supabase_client.optimize_image(response.content) # Corrected function call
-                        image_base64 = base64.b64encode(optimized_content).decode("utf-8")
+                        optimized_content = await supabase_client.optimize_image(
+                            response.content
+                        )  # Corrected function call
+                        image_base64 = base64.b64encode(optimized_content).decode(
+                            "utf-8"
+                        )
 
-                    response_parts.append({
-                        "part_id": len(response_parts) + 1,
-                        "type": "file",
-                        "human_handoff": False,
-                        "send_menu": True,
-                        "file_details": {
-                            "retrieval_key": "menu_image",
-                            "file_type": "image/jpeg",
-                            "base64_content": image_base64
+                    response_parts.append(
+                        {
+                            "part_id": len(response_parts) + 1,
+                            "type": "file",
+                            "human_handoff": False,
+                            "send_menu": True,
+                            "file_details": {
+                                "retrieval_key": "menu_image",
+                                "file_type": "image/jpeg",
+                                "base64_content": image_base64,
+                            },
                         }
-                    })
+                    )
                 except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                    logger.error(f"Erro ao baixar ou processar imagem do cardápio: {e}", exc_info=True)
+                    logger.error(
+                        f"Erro ao baixar ou processar imagem do cardápio: {e}",
+                        exc_info=True,
+                    )
             else:
-                logger.warning(f"send_menu era True, mas nenhuma imagem de cardápio foi encontrada para o tenant {tenant.tenant_id}")
-        
+                logger.warning(
+                    f"send_menu era True, mas nenhuma imagem de cardápio foi encontrada para o tenant {tenant.tenant_id}"
+                )
+
         if human_handoff:
-            response_parts.append({
-                "part_id": len(response_parts) + 1,
-                "type": "validation",
-                "human_handoff": True,
-                "send_menu": False
-            })
+            response_parts.append(
+                {
+                    "part_id": len(response_parts) + 1,
+                    "type": "validation",
+                    "human_handoff": True,
+                    "send_menu": False,
+                }
+            )
 
         if not response_parts:
             logger.warning("Nenhuma parte de resposta foi gerada pela IA.")
@@ -142,40 +181,55 @@ async def handle_ai_webhook(request: Request, db: Session = Depends(get_db)):
         raise http_exc
     except json.JSONDecodeError as e:
         logger.critical(f"Erro de decodificação JSON na rota /ai: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Requisição JSON inválida: {str(e)}")
+        raise HTTPException(
+            status_code=400, detail=f"Requisição JSON inválida: {str(e)}"
+        )
     except Exception as e:
         logger.critical(f"Erro crítico na rota /ai: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Ocorreu um erro interno no servidor: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Ocorreu um erro interno no servidor: {str(e)}"
+        )
+
 
 @router.post("/calcular-frete", dependencies=[Depends(get_current_user)])
 async def calcular_frete(
     tenant_id: str,
     cliente_lat: float,
     cliente_lng: float,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    logger.info(f"Calculando frete para tenant {tenant_id} e cliente ({cliente_lat}, {cliente_lng})")
+    logger.info(
+        f"Calculando frete para tenant {tenant_id} e cliente ({cliente_lat}, {cliente_lng})"
+    )
     tenant = tenant_crud.get_tenant_by_id(db, tenant_id)
     if not tenant:
-        logger.warning(f"Tentativa de calcular frete para cliente não encontrado: {tenant_id}")
+        logger.warning(
+            f"Tentativa de calcular frete para cliente não encontrado: {tenant_id}"
+        )
         raise HTTPException(status_code=404, detail="Cliente/loja não encontrado")
-    
+
     if not tenant.latitude or not tenant.longitude:
-        logger.warning(f"Loja {tenant_id} não possui coordenadas cadastradas para cálculo de frete.")
-        raise HTTPException(status_code=400, detail="Loja não possui coordenadas cadastradas")
-    
+        logger.warning(
+            f"Loja {tenant_id} não possui coordenadas cadastradas para cálculo de frete."
+        )
+        raise HTTPException(
+            status_code=400, detail="Loja não possui coordenadas cadastradas"
+        )
+
     GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
     if not GOOGLE_MAPS_API_KEY:
         logger.error("Google Maps API Key não configurada para cálculo de frete.")
-        raise HTTPException(status_code=400, detail="Google Maps API Key não configurada")
-    
+        raise HTTPException(
+            status_code=400, detail="Google Maps API Key não configurada"
+        )
+
     try:
-        distancia_km = await google_maps_client.calcular_frete_google_maps_async( # Corrected function call
-            float(tenant.latitude), 
-            float(tenant.longitude), 
-            cliente_lat, 
-            cliente_lng, 
-            GOOGLE_MAPS_API_KEY
+        distancia_km = await google_maps_client.calcular_frete_google_maps_async(  # Corrected function call
+            float(tenant.latitude),
+            float(tenant.longitude),
+            cliente_lat,
+            cliente_lng,
+            GOOGLE_MAPS_API_KEY,
         )
         logger.info(f"Frete calculado para {tenant_id}: {distancia_km:.2f} km.")
         return {
@@ -183,12 +237,9 @@ async def calcular_frete(
             "origem": {
                 "endereco": tenant.endereco,
                 "latitude": tenant.latitude,
-                "longitude": tenant.longitude
+                "longitude": tenant.longitude,
             },
-            "destino": {
-                "latitude": cliente_lat,
-                "longitude": cliente_lng
-            }
+            "destino": {"latitude": cliente_lat, "longitude": cliente_lng},
         }
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         logger.error(f"Erro ao calcular frete para {tenant_id}: {e}", exc_info=True)

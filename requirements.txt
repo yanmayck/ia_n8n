@@ -28,3 +28,4 @@ pytest-asyncio
 redis
 thefuzz
 python-levenshtein
+ruff

@@ -1,23 +1,21 @@
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # Adiciona o caminho raiz do projeto para encontrar o .env.test
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-load_dotenv(dotenv_path=os.path.join(project_root, '.env.test'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(dotenv_path=os.path.join(project_root, ".env.test"))
 
 # Adicione o caminho raiz do projeto no contêiner ao sys.path
 sys.path.append(project_root)
 
-from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
-from alembic import context
+from alembic import context  # noqa: E402
 
 # Importação corrigida: como o diretório de trabalho é /app, referencie core.models diretamente
-from core.models import Base
+from core.models import Base  # noqa: E402
+from sqlalchemy import engine_from_config, pool  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -79,15 +77,13 @@ def run_migrations_online() -> None:
         raise Exception("DATABASE_URL environment variable not set.")
 
     connectable = engine_from_config(
-        {"sqlalchemy.url": database_url}, # Passa a URL do banco de dados diretamente
+        {"sqlalchemy.url": database_url},  # Passa a URL do banco de dados diretamente
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
@@ -97,4 +93,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
- 

@@ -1,5 +1,6 @@
-from sqlalchemy.orm import Session
 from core import models, schemas
+from sqlalchemy.orm import Session
+
 
 def create_interaction(db: Session, interaction: schemas.InteractionCreate):
     db_interaction = models.Interaction(**interaction.model_dump())
@@ -7,6 +8,7 @@ def create_interaction(db: Session, interaction: schemas.InteractionCreate):
     db.commit()
     db.refresh(db_interaction)
     return db_interaction
+
 
 def get_interactions_by_user_phone(db: Session, user_phone: str, limit: int = 10):
     return (
@@ -17,6 +19,10 @@ def get_interactions_by_user_phone(db: Session, user_phone: str, limit: int = 10
         .all()[::-1]
     )
 
-def get_interaction_by_whatsapp_id(db: Session, whatsapp_message_id: str):
-    return db.query(models.Interaction).filter(models.Interaction.whatsapp_message_id == whatsapp_message_id).first()
 
+def get_interaction_by_whatsapp_id(db: Session, whatsapp_message_id: str):
+    return (
+        db.query(models.Interaction)
+        .filter(models.Interaction.whatsapp_message_id == whatsapp_message_id)
+        .first()
+    )

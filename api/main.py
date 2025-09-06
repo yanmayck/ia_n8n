@@ -1,22 +1,30 @@
 import logging
-from logging.config import dictConfig
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from starlette.staticfiles import StaticFiles
 
-from core.logging_config import LOGGING_CONFIG
-from core import models
-from core.database import engine
-from api.routers import tenants, ai, personalities, products, authentication, opcionais, promocoes, api_keys, sync
+from api.routers import (
+    ai,
+    api_keys,
+    authentication,
+    opcionais,
+    personalities,
+    products,
+    promocoes,
+    sync,
+    tenants,
+)
 
 # Configuração de Logging
 # dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # Carrega as variáveis de ambiente
-from dotenv import load_dotenv
 load_dotenv()
 
 # Validação das variáveis de ambiente
@@ -28,18 +36,18 @@ if not os.getenv("GEMINI_API_KEY"):
 # A linha abaixo foi removida para que o Alembic seja a única fonte da verdade para o schema.
 # models.Base.metadata.create_all(bind=engine)
 
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print_application_routes()
     yield
 
+
 app = FastAPI(
     title="API de Chatbot com Equipe de IAs (Agno)",
     description="Processa mensagens multimodais usando uma equipe de IA.",
     version="4.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # --- CORREÇÃO FINAL E PRONTA PARA PRODUÇÃO ---
@@ -58,10 +66,12 @@ app.mount("/static", StaticFiles(directory=str(templates_dir)), name="static")
 
 # --- Rota da Interface e Inclusão dos Roteadores ---
 
+
 @app.get("/", tags=["Interface"])
 async def read_root(request: Request):
     logger.info("Requisição recebida para a rota raiz.")
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 # Incluir os roteadores da API
 app.include_router(authentication.router)
@@ -72,16 +82,17 @@ app.include_router(products.router)
 app.include_router(opcionais.router)
 app.include_router(promocoes.router)
 app.include_router(api_keys.router)
-app.include_router(sync.router) # Rota de sincronização
+app.include_router(sync.router)  # Rota de sincronização
+
 
 def print_application_routes():
     """Imprime todas as rotas disponíveis na inicialização da aplicação."""
-    print("="*80)
+    print("=" * 80)
     print("Rotas da API disponíveis:")
-    print("="*80)
+    print("=" * 80)
     print(f"{'Método(s)':<15} {'Rota (Endpoint)':<45} {'Nome da Função'}")
-    print("-"*80)
+    print("-" * 80)
     for route in app.routes:
         if hasattr(route, "methods"):
             print(f"{''.join(route.methods):<15} {route.path:<45} {route.name}")
-    print("="*80)
+    print("=" * 80)

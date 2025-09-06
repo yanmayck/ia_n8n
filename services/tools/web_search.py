@@ -1,8 +1,10 @@
 import logging
+
 from agno.tools import tool
 from duckduckgo_search import DDGS
 
 logger = logging.getLogger(__name__)
+
 
 @tool
 def search_tool(query: str) -> str:

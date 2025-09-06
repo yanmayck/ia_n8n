@@ -1,17 +1,31 @@
 import logging
-from sqlalchemy.orm import Session # Adicionado
+
 from agno.models.google import Gemini
 from core.schemas import AnaliseDeIntencao
-from services.agents.base_agent import BaseAgent # Nova importação
+from sqlalchemy.orm import Session  # Adicionado
+
+from services.agents.base_agent import BaseAgent  # Nova importação
 
 logger = logging.getLogger(__name__)
 
-def get_receptionist_agent(model_id: str, api_key: str, db: Session, tenant_id: str, user_id: str, session_id: str):
+
+def get_receptionist_agent(
+    model_id: str,
+    api_key: str,
+    db: Session,
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+):
     return BaseAgent(
         model=Gemini(id=model_id, api_key=api_key),
         api_key=api_key,
-        db=db, tenant_id=tenant_id, user_id=user_id, session_id=session_id,
-        description=("""
+        db=db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+        description=(
+            """
         Você é um especialista em análise de linguagem natural. Sua única função é ler a mensagem do usuário
         e o histórico da conversa para decompor a solicitação em uma ou mais tarefas, retornando um objeto `AnaliseDeIntencao`.
 
@@ -37,8 +51,8 @@ def get_receptionist_agent(model_id: str, api_key: str, db: Session, tenant_id: 
         ),
         response_model=AnaliseDeIntencao,
         structured_outputs=True,
-        add_history_to_messages=True, # <-- Habilita a memória
-        num_history_runs=2,           # <-- Define o tamanho da memória
+        add_history_to_messages=True,  # <-- Habilita a memória
+        num_history_runs=2,  # <-- Define o tamanho da memória
         session_state={"db": db, "tenant_id": tenant_id},
         add_state_in_messages=True,
         retries=1,

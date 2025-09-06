@@ -1,15 +1,31 @@
 import logging
 from typing import List
-from sqlalchemy.orm import Session
+
 from core import models, schemas
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-def get_promocao(db: Session, promocao_id: int):
-    return db.query(models.Promocao).filter(models.Promocao.id_promocao == promocao_id).first()
 
-def get_promocoes_by_tenant(db: Session, tenant_id: str, skip: int = 0, limit: int = 100):
-    return db.query(models.Promocao).filter(models.Promocao.tenant_id == tenant_id).offset(skip).limit(limit).all()
+def get_promocao(db: Session, promocao_id: int):
+    return (
+        db.query(models.Promocao)
+        .filter(models.Promocao.id_promocao == promocao_id)
+        .first()
+    )
+
+
+def get_promocoes_by_tenant(
+    db: Session, tenant_id: str, skip: int = 0, limit: int = 100
+):
+    return (
+        db.query(models.Promocao)
+        .filter(models.Promocao.tenant_id == tenant_id)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
 
 def create_promocao(db: Session, promocao: schemas.PromocaoCreate, tenant_id: str):
     logger.info(f"CRUD: Criando objeto Promocao no modelo para o tenant '{tenant_id}'.")
@@ -17,10 +33,15 @@ def create_promocao(db: Session, promocao: schemas.PromocaoCreate, tenant_id: st
     db.add(db_promocao)
     db.commit()
     db.refresh(db_promocao)
-    logger.info(f"CRUD: Promoção '{db_promocao.nome_promocao}' (ID: {db_promocao.id_promocao}) comitada no banco de dados.")
+    logger.info(
+        f"CRUD: Promoção '{db_promocao.nome_promocao}' (ID: {db_promocao.id_promocao}) comitada no banco de dados."
+    )
     return db_promocao
 
-def update_promocao(db: Session, promocao_id: int, promocao_data: schemas.PromocaoUpdate):
+
+def update_promocao(
+    db: Session, promocao_id: int, promocao_data: schemas.PromocaoUpdate
+):
     db_promocao = get_promocao(db, promocao_id)
     if db_promocao:
         update_data = promocao_data.model_dump(exclude_unset=True)
@@ -30,6 +51,7 @@ def update_promocao(db: Session, promocao_id: int, promocao_data: schemas.Promoc
         db.refresh(db_promocao)
     return db_promocao
 
+
 def delete_promocao(db: Session, promocao_id: int):
     db_promocao = get_promocao(db, promocao_id)
     if db_promocao:
@@ -37,12 +59,17 @@ def delete_promocao(db: Session, promocao_id: int):
         db.commit()
     return db_promocao
 
-def replace_all_promocoes_for_tenant(db: Session, tenant_id: str, promocoes_data: List[schemas.PromocaoCreate]):
+
+def replace_all_promocoes_for_tenant(
+    db: Session, tenant_id: str, promocoes_data: List[schemas.PromocaoCreate]
+):
     """
     Deleta todas as promoções existentes de um tenant e insere as novas.
     """
-    db.query(models.Promocao).filter(models.Promocao.tenant_id == tenant_id).delete(synchronize_session=False)
-    
+    db.query(models.Promocao).filter(models.Promocao.tenant_id == tenant_id).delete(
+        synchronize_session=False
+    )
+
     new_promocoes = []
     for promo_data in promocoes_data:
         new_promo = models.Promocao(
@@ -51,11 +78,11 @@ def replace_all_promocoes_for_tenant(db: Session, tenant_id: str, promocoes_data
             descricao_para_ia=promo_data.descricao_para_ia,
             condicao_json=promo_data.condicao_json,
             acao_json=promo_data.acao_json,
-            is_ativa=promo_data.is_ativa
+            is_ativa=promo_data.is_ativa,
         )
         new_promocoes.append(new_promo)
-        
+
     if new_promocoes:
         db.bulk_save_objects(new_promocoes)
-        
+
     db.commit()

@@ -1,6 +1,7 @@
 import os
-from google import genai
+
 from dotenv import load_dotenv
+from google import genai
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -19,23 +20,30 @@ else:
         # client = genai.Client()
         client = genai.Client(api_key=api_key)
 
-        print("Chave de API encontrada. Enviando um prompt de teste para o Gemini com a nova SDK...")
+        print(
+            "Chave de API encontrada. Enviando um prompt de teste para o Gemini com a nova SDK..."
+        )
 
         # --- Alteração para a Nova SDK ---
         # Gera conteúdo usando o cliente, especificando o nome do modelo.
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents="Diga olá."
+            model="gemini-2.0-flash", contents="Diga olá."
         )
 
         # Verifica e imprime a resposta (a estrutura da resposta permanece a mesma)
         print("\n--- Resposta do Gemini ---")
         print(response.text)
         print("--------------------------")
-        print("\n✅ Sua chave de API do Gemini é válida e está funcionando corretamente com a nova SDK!")
+        print(
+            "\n✅ Sua chave de API do Gemini é válida e está funcionando corretamente com a nova SDK!"
+        )
 
     except Exception as e:
         print("\n--- Erro ao conectar com a API do Gemini ---")
         print(f"Ocorreu um erro: {e}")
-        print("\n❌ Sua chave de API do Gemini é INVÁLIDA ou há um problema de configuração/rede.")
-        print("Por favor, verifique sua chave no Google AI Studio e as configurações do seu projeto.")
+        print(
+            "\n❌ Sua chave de API do Gemini é INVÁLIDA ou há um problema de configuração/rede."
+        )
+        print(
+            "Por favor, verifique sua chave no Google AI Studio e as configurações do seu projeto."
+        )
