@@ -1,169 +1,80 @@
-# Sistema de Gerenciamento de Clientes com IA
+# Projeto IA-N8N: Atendente de Food Service com IA
 
-## 🚀 Funcionalidades
+O `ia_n8n` é um sistema de inteligência artificial avançado projetado para atuar como um **atendente de food service autônomo e de alta performance**. O objetivo é gerenciar conversas com clientes via WhatsApp, guiando-os de forma natural e eficiente através do processo completo de um pedido.
 
-### **Cadastro Completo de Clientes**
-- **Nome da Instância**: Identificador único para buscar dados
-- **Nome da Loja**: Nome para identificação visual
-- **Personalidade da IA**: Como a IA vai agir
-- **Endereço, CEP, Latitude, Longitude**: Localização da loja
-- **Arquivo .txt**: Descrição completa da empresa
-- **Arquivo Excel**: Tabela de produtos da loja
+---
 
-### **Gerenciamento**
-- ✅ Listar todos os clientes
-- ✅ Editar clientes (inline)
-- ✅ Ativar/Desativar clientes
-- ✅ Remover clientes
-- ✅ Cálculo de frete via Google Maps
+## 📚 Documentação Completa
 
-### **APIs Integradas**
-- Google Maps API (cálculo de frete)
-- Evolution API (WhatsApp)
-- Gemini API (IA)
+Para uma visão aprofundada do projeto, consulte nossa documentação detalhada na pasta `docs/`:
 
-## 📁 Estrutura de Pastas
+-   **[Arquitetura do Sistema](./docs/01_architecture.md):** Entenda como o sistema funciona, seu fluxo de trabalho e os componentes.
+-   **[Guia de Instalação e Configuração](./docs/02_setup.md):** Siga o passo a passo para configurar o ambiente de desenvolvimento.
+-   **[Referência da API](./docs/03_api_reference.md):** Consulte a documentação de todos os endpoints da API.
+-   **[Guia para Desenvolvedores](./docs/04_contributing.md):** Conheça as convenções e os padrões para contribuir com o projeto.
+-   **[Roadmap de Desenvolvimento](./docs/05_roadmap.md):** Veja os planos e as futuras funcionalidades.
 
-```
-ia_n8n/
-├── api/                 # Contém o arquivo principal da API (main.py)
-│   └── main.py
-├── core/                # Modelos de dados, schemas e configuração do banco
-│   ├── database.py
-│   ├── models.py
-│   └── schemas.py
-├── crud/                # Funções de operações de banco de dados (CRUD)
-│   └── crud.py
-├── services/            # Lógica de negócio, integração com IAs e APIs externas
-│   └── services.py
-├── templates/           # Arquivos HTML do frontend
-│   └── index.html
-├── logs/                # Arquivos de log da aplicação
-├── .git/
-├── venv/
-├── requirements.txt
-├── env_example.txt
-├── README.md
-└── .gitignore
-```
+---
 
-## ⚙️ Configuração
+## 🚀 Quick Start (Desenvolvimento)
 
-### 1. **Instalar Dependências**
+Siga os passos abaixo para executar o projeto localmente.
+
+### 1. Pré-requisitos
+
+-   Git
+-   Python 3.10+
+-   Docker e Docker Compose
+
+### 2. Instalação
+
 ```bash
+# 1. Clone o repositório
+git clone <URL_DO_REPOSITORIO>
+cd ia_n8n
+
+# 2. Crie e ative um ambiente virtual
+python -m venv venv
+# No Windows: .\venv\Scripts\activate
+# No macOS/Linux: source venv/bin/activate
+
+# 3. Instale as dependências
 pip install -r requirements.txt
-```
 
-### 2. **Configurar Variáveis de Ambiente**
-Crie um arquivo `.env` baseado no `env_example.txt`:
+# 4. Configure as variáveis de ambiente
+# Copie o exemplo e edite o arquivo .env com suas chaves e senhas
+cp .env.example .env
 
-```env
-# Configurações do Banco de Dados
-DATABASE_URL=sqlite:///./database/chat_app.db
+# 5. Inicie o banco de dados e o Redis com Docker
+docker-compose -f docker-compose.test.yml up -d
 
-# APIs Externas
-GOOGLE_MAPS_API_KEY=sua_google_maps_api_key_aqui
-EVOLUTION_API_KEY=sua_evolution_api_key_aqui
-GEMINI_API_KEY=sua_gemini_api_key_aqui
+# 6. Aplique as migrações do banco de dados
+alembic upgrade head
 
-# Outras configurações
-DEBUG=True
-```
-
-### 3. **Estrutura do Excel de Produtos**
-O arquivo Excel deve ter as colunas:
-- `name`: Nome do produto
-- `price`: Preço do produto
-- `retrieval_key`: Chave de busca (opcional)
-
-## 🎯 Endpoints da API
-
-### **Cadastro via Interface Web**
-```
-POST /tenants/
-```
-- Recebe: Formulário multipart com todos os dados + arquivos
-- Cria: Tenant + Produtos do Excel
-
-### **Cadastro via JSON (Primeira Requisição)**
-```
-POST /tenant-instancia/
-```
-- Recebe: JSON com chave "instancia"
-- Exemplo:
-```json
-{
-  "instancia": "loja_abc",
-  "url": "https://api.loja.com",
-  "is_active": true,
-  "id_pronpt": "personalidade_vendedor"
-}
-```
-
-### **Outros Endpoints**
-- `GET /tenants/` - Listar clientes
-- `GET /tenants/{id}` - Buscar cliente
-- `PUT /tenants/{id}` - Atualizar cliente
-- `PUT /tenants/{id}/toggle-status` - Ativar/Desativar
-- `DELETE /tenants/{id}` - Remover cliente
-- `POST /tenant-data/` - Buscar dados de tenant por instância
-- `POST /ai` - Rota principal da IA (recebe mensagens e retorna respostas)
-- `POST /personalities/` - Criar personalidade da IA
-- `GET /get-file/{retrieval_key}` - Recuperar arquivos
-- `POST /upload-products` - Upload de produtos via Excel
-- `GET /products/{tenant_id}` - Buscar produtos por tenant
-- `POST /calcular-frete` - Calcular frete
-
-## 🚀 Como Usar
-
-### 1. **Iniciar o Servidor**
-Navegue até a pasta `ia_n8n` e execute:
-```bash
+# 7. Inicie o servidor da API
 uvicorn api.main:app --reload
 ```
 
-### 2. **Acessar Interface Web**
-- URL: http://localhost:8000
-- Cadastre clientes com todos os dados
-- Teste o cálculo de frete
+Após esses passos, a API estará rodando em `http://localhost:8000`.
 
-### 3. **Cadastro via JSON**
-Navegue até a pasta `ia_n8n` e execute:
-```bash
-curl -X POST "http://localhost:8000/tenant-instancia/" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "instancia": "minha_loja",
-    "url": "https://api.minhaloja.com",
-    "is_active": true,
-    "id_pronpt": "vendedor_simpatico"
-  }'
+## 📁 Estrutura de Pastas Principal
+
+```
+ia_n8n/
+├── docs/                # Documentação detalhada do projeto
+├── api/                 # Endpoints da API (FastAPI)
+├── core/                # Modelos de dados, schemas e configuração do DB
+├── crud/                # Funções de acesso ao banco de dados (CRUD)
+├── services/            # Lógica de negócio, orquestração e agentes de IA
+├── tests/               # Testes automatizados
+├── templates/           # Arquivos HTML/JS/CSS para o painel de admin
+├── alembic/             # Scripts de migração do banco de dados
+├── requirements.txt     # Dependências do projeto
+└── README.md            # Este arquivo
 ```
 
-## 📊 Banco de Dados
+---
 
-O banco é criado automaticamente na pasta `database/` com as tabelas:
-- `tenants`: Clientes/Lojas
-- `personalities`: Personalidades da IA
-- `products`: Produtos das lojas
-- `interactions`: Interações com clientes
+## 🏛️ Histórico de Desenvolvimento
 
-## 🔧 Desenvolvimento
-
-### **Estrutura do Código**
-- **Backend**: FastAPI + SQLAlchemy
-- **Frontend**: HTML + JavaScript vanilla
-- **Banco**: SQLite (pasta `ia_n8n/database/`)
-- **APIs**: Google Maps, Evolution, Gemini
-- **Logging**: Logs armazenados em `ia_n8n/logs/`
-
-### **Fluxo de Dados**
-1. **Primeira requisição (`/tenant-instancia/`)**: JSON com "instancia" → Cria tenant básico
-2. **Cadastro completo (`/tenants/`)**: Interface web → Dados completos + arquivos
-3. **Gerenciamento**: Interface web → CRUD completo via `api/main.py`
-4. **Cálculo de frete**: Coordenadas → Google Maps API
-5. **Interação com IA (`/ai`)**: Processa mensagem, salva interação, retorna resposta formatada.
-
-## 🎉 Pronto para Uso!
-
-O sistema está completo e pronto para cadastrar clientes, gerenciar dados e calcular fretes! 
+Os documentos originais de planejamento e arquitetura que guiaram as fases iniciais do projeto foram arquivados para referência histórica. Eles podem ser encontrados na pasta [`docs/history/`](./docs/history/).
