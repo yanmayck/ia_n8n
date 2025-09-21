@@ -21,8 +21,9 @@ def test_get_contextual_suggestions(db_session: Session):
         cep="10101-101",
         latitude=0.0,
         longitude=0.0,
+        config_ai="Config AI de teste",
     )
-    tenant_crud.create_tenant(db_session, tenant_data, "Config AI de teste")
+    tenant_crud.create_tenant(db_session, tenant_data)
 
     product_data = schemas.ProductCreate(
         nome_produto="Hamburguer Teste", preco_base=15.0

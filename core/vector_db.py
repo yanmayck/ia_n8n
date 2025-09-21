@@ -60,8 +60,9 @@ class VectorDBManager:
 
             documents_to_insert = []
             for text, metadata in zip(texts, metadatas):
-                doc = Document(id=str(uuid.uuid4()), content=text)
-                doc.metadata = metadata
+                doc = Document(
+                    id=str(uuid.uuid4()), content=text, meta_data=metadata
+                )
                 documents_to_insert.append(doc)
 
             if documents_to_insert:

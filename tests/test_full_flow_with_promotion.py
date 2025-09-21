@@ -102,11 +102,10 @@ async def test_complete_order_flow_with_promotion_acceptance(
     )
     await log_and_ask("Boa noite")
     await log_and_ask("gostaria de uma pizza de calabresa")
-    await log_and_ask("sim, aceito")  # <-- Aceitando a promoção
-    await log_and_ask(
-        "pode fechar a conta. meu endereço é Avenida Paulista, 1000, São Paulo"
-    )
-    await log_and_ask("isso, pode confirmar")
+    await log_and_ask("sim, aceito a promoção")  # <-- Aceitando a promoção
+    await log_and_ask("pode fechar a conta")
+    await log_and_ask("quero pagar no cartão. endereço: Rua das Flores, 123")
+    await log_and_ask("correto")
 
     # --- PASSO 3: Validação Final ---
     logger.info(
@@ -119,33 +118,16 @@ async def test_complete_order_flow_with_promotion_acceptance(
     logger.info(f"DADOS ENVIADOS PARA A PLATAFORMA: {sent_order_data}")
 
     assert sent_order_data["user_id"] == user_id
-    assert len(sent_order_data["items"]) == 2  # Deve conter a Pizza e o Brinde
+    assert sent_order_data["payment_method"] == "cartão"
+    assert "Rua das Flores, 123" in sent_order_data["address"]
+    
+    sent_items = sent_order_data["items"]
+    assert len(sent_items) == 2  # Deve conter a Pizza e o Brinde
+    assert any(item["product_name"] == "Pizza de Calabresa" for item in sent_items)
+    assert any(item["product_name"] == "Borda Recheada Grátis" and item["unit_price"] == 0.0 for item in sent_items), \
+        "O item da promoção (brinde) não foi encontrado ou seu preço não é zero."
 
-    # Verifica se a pizza está lá
-    assert any(
-        item["product_name"] == "Pizza de Calabresa"
-        for item in sent_order_data["items"]
-    )
-
-    # Verifica se o brinde (baseado no nome da promoção) está lá com preço zero
-    promo_item = next(
-        (
-            item
-            for item in sent_order_data["items"]
-            if item["product_name"] == "Borda Recheada Grátis"
-        ),
-        None,
-    )
-    assert promo_item is not None, (
-        "O item da promoção não foi encontrado no pedido final."
-    )
-    assert promo_item["unit_price"] == 0.0
-
-    assert sent_order_data["address"] is not None
-    assert "avenida paulista, 1000" in sent_order_data["address"].lower()
-
-    # --- PASSO 4: Log da Conversa para Validação Manual ---
-    logger.info(f"[{session_id}] - Fluxo de teste de promoção concluído com sucesso!")
+    # --- PASSO 4: Log da Conversa ---
     logger.info("--- LOG COMPLETO DA CONVERSA PARA ANÁLISE ---")
     for entry in conversation_log:
         logger.info(f"USER: {entry['user']}\nAI: {entry['ai']}\n")

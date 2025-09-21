@@ -60,20 +60,76 @@ class OrderState(BaseModel):
 
 ### 3.3. `services/main_orchestrator.py`
 
-Esta é a mudança principal. O workflow será reestruturado para seguir o novo fluxo.
+Esta é a mudança principal. O workflow será reestruturado para seguir o novo fluxo, utilizando o `Router` do Agno para direcionar a conversa.
 
-1.  **Intenção de Finalizar:** Quando o `receptionist_agent` detectar que o usuário quer fechar o pedido, o orquestrador **não** irá mais gerar um resumo.
-2.  **Passo `ask_payment_method_step`:**
-    -   Este passo será acionado.
-    -   Sua única responsabilidade é instruir o `response_formulation_agent` a perguntar a forma de pagamento.
-3.  **Passo `final_confirmation_step`:**
-    -   Será acionado após o `receptionist_agent` capturar a forma de pagamento.
+#### Etapa 3.3.1: Implementar a Pergunta sobre a Forma de Pagamento
+
+Quando o cliente pede para "fechar a conta", a IA deve primeiro perguntar como ele deseja pagar.
+
+1.  **Definir o novo `Step` no Orquestrador:**
+    No método `__init__` da classe `OrchestratorAgent`, defina um novo `Step` cuja única função é lidar com a pergunta da forma de pagamento.
+
+    ```python
+    # Em services/main_orchestrator.py, dentro de OrchestratorAgent.__init__
+    
+    self.ask_payment_method_step = Step(
+        name="ask_payment_method",
+        executor=partial(self._ask_payment_method_executor)
+    )
+    ```
+
+2.  **Criar a Função `Executor`:**
+    Crie a função que será executada por este `Step`. A responsabilidade dela não é gerar a pergunta, mas sim passar uma instrução clara para o `response_formulation_agent`.
+
+    ```python
+    # Em services/main_orchestrator.py, dentro da classe OrchestratorAgent
+
+    async def _ask_payment_method_executor(self, step_input: StepInput) -> StepOutput:
+        """
+        Prepara o contexto para o agente de formulação de resposta perguntar
+        a forma de pagamento.
+        """
+        logger.info("EXECUTOR: Preparando para perguntar a forma de pagamento.")
+        
+        # Instrução clara que será usada pelo agente de formulação da resposta
+        context_message = "O cliente pediu para fechar o pedido. Pergunte a ele qual a forma de pagamento (Pix, Cartão ou Dinheiro) e aguarde a resposta."
+        
+        # Usamos o 'rag_context' para passar a instrução para o próximo passo.
+        step_input.additional_data["rag_context"] = context_message
+        
+        return StepOutput(content=context_message)
+    ```
+
+3.  **Atualizar o `Router`:**
+    Modifique a função `_route_to_data_collection_step` para que, ao receber a intenção `fechar_conta`, ela acione o `ask_payment_method_step`.
+
+    ```python
+    # Em services/main_orchestrator.py, dentro de _route_to_data_collection_step
+
+    task_types = {t.tipo_tarefa for t in receptionist_output.tarefas}
+
+    if "fechar_conta" in task_types:
+        logger.info("Roteando para o passo de perguntar a forma de pagamento.")
+        # Adicione o novo step à lista de choices do Router e retorne-o aqui
+        return self.ask_payment_method_step 
+    
+    # ... resto da lógica do roteador
+    ```
+
+#### Etapa 3.3.2: Implementar a Confirmação Final e Criação do Pedido
+
+Após o cliente responder a forma de pagamento, o fluxo continua.
+
+1.  **Intenção de Finalizar:** Quando o `receptionist_agent` detectar a forma de pagamento (ex: `tipo_tarefa: 'informar_metodo_pagamento'`), o roteador deve acionar o `final_confirmation_step`.
+
+2.  **Passo `final_confirmation_step`:**
     -   **Lógica:**
         - Recupera o `OrderState` completo da memória (Redis).
-        - Adiciona o método de pagamento ao estado.
-        - Monta a string de resumo **completa** (itens, totais, pagamento).
-        - Passa essa string para o `response_formulation_agent` com a instrução de apresentá-la e pedir a confirmação final.
-4.  **Passo Final - `create_order_step`:**
+        - Adiciona o `payment_method` ao estado.
+        - **Chama a função `formatar_resumo_pedido` (descrita na seção 3.5) para montar a string de resumo completa.**
+        - Passa essa string para o `response_formulation_agent` com a instrução de apresentá-la e pedir a confirmação final ("Está tudo correto?").
+
+3.  **Passo Final - `create_order_step`:**
     -   Será acionado quando o usuário responder "sim" à confirmação final.
     -   **Lógica:**
         - Chama a função `save_order_to_platform` com todos os dados do `OrderState`, incluindo o `payment_method`.

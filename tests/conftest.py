@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 
+
 import pytest
 import redis
 from dotenv import load_dotenv
@@ -28,7 +29,7 @@ else:
 # 4. AGORA, com o ambiente configurado, podemos importar os módulos da aplicação
 from api.dependencies import get_db  # noqa: E402
 from api.main import app  # noqa: E402
-from core import models, schemas  # noqa: E402
+from core import schemas  # noqa: E402
 from crud import tenant_crud  # noqa: E402
 from services import data_sync_service  # noqa: E402
 
@@ -151,36 +152,26 @@ async def client(db_session: Session):
 @pytest.fixture(scope="function")
 async def test_tenant(db_session: Session):
     """Cria um tenant de teste e carrega seus dados no VectorDB."""
-    personality_data = schemas.PersonalityCreate(
-        name="test_personality_for_tenant", prompt="Prompt de teste."
-    )
-    db_personality = models.Personality(
-        name=personality_data.name, prompt=personality_data.prompt
-    )
-    db_session.add(db_personality)
-    db_session.commit()
-    db_session.refresh(db_personality)
-
-    tenant_data = schemas.TenantCreate(
-        tenant_id="test_tenant_id",
-        nome_loja="Loja de Teste",
-        ia_personality=db_personality.name,
-        ai_prompt_description="Descrição de teste",
-        endereco="Rua Teste, 123",
-        cep="12345-678",
-        latitude=-23.550520,
-        longitude=-46.633308,
-        url="http://test.com",
-        freight_config='{"type": "FIXED", "price": 12.50}',
-    )
     conteudo_loja_para_teste = """
     Informações da loja de teste:
     Nossa pizzaria funciona todos os dias das 11h às 23h.
     Oferecemos pizzas deliciosas e promoções incríveis.
     """
-    tenant = tenant_crud.create_tenant(
-        db_session, tenant_data, conteudo_loja=conteudo_loja_para_teste
+    tenant_data = schemas.TenantCreate(
+        tenant_id="test_tenant_id",
+        nome_loja="Loja de Teste",
+        ia_personality="test_personality_for_tenant",
+        ai_prompt_description="Descrição de teste",
+        endereco="Rua Teste, 123",
+        cep="12345-678",
+        latitude=-23.550520,
+        longitude=-46.633308,
+        url="http://localhost:3001",
+        freight_config='{"type": "FIXED", "price": 12.50}',
+        config_ai=conteudo_loja_para_teste,
     )
+
+    tenant = tenant_crud.create_tenant(db_session, tenant_data)
 
     await data_sync_service.load_data_to_vector_db(db_session, tenant.tenant_id)
 

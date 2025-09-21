@@ -13,15 +13,36 @@ GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY")
 
 
 @tool
-async def geocode_address(address: str) -> str:
-    """Converte um endereço de texto em coordenadas de latitude e longitude usando a API do Google Geocoding."""
+async def geocode_address(address: str, tenant_id: str, db: Session) -> str:
+    """
+    Converte um endereço de texto em coordenadas de latitude e longitude,
+    dando preferência para locais próximos à loja (tenant).
+    """
     if not GOOGLE_MAPS_API_KEY:
         return json.dumps(
             {"error": "A chave da API do Google Maps não está configurada no servidor."}
         )
 
+    tenant = await run_in_threadpool(tenant_crud.get_tenant_by_id, db, tenant_id)
+    if not tenant or not tenant.latitude or not tenant.longitude:
+        return json.dumps(
+            {"error": "Localização da loja não configurada para o tenant."}
+        )
+
     url = "https://maps.googleapis.com/maps/api/geocode/json"
     params = {"address": address, "key": GOOGLE_MAPS_API_KEY}
+
+    # Adiciona um viés de localização para a região da loja
+    try:
+        lat, lng = float(tenant.latitude), float(tenant.longitude)
+        # Cria um retângulo de ~50km x 50km ao redor da loja
+        bounds = f"{lat-0.25},{lng-0.25}|{lat+0.25},{lng+0.25}"
+        params["bounds"] = bounds
+        logger.info(f"Geocoding com viés de localização: {bounds}")
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Coordenadas inválidas para o tenant {tenant_id}. Buscando sem viés."
+        )
 
     logger.debug(f"Geocoding API Request: URL={url}, Params={params}")
     async with httpx.AsyncClient(timeout=15.0) as client:

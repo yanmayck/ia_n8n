@@ -77,13 +77,15 @@ async def create_tenant(
         cep=cep,
         latitude=latitude,
         longitude=longitude,
+        config_ai=conteudo_loja,  # Corrigido
         freight_config=freight_config,
     )
 
     tenant = None
     try:
         logger.info(f"Iniciando criação do tenant: {tenant_id}")
-        tenant = tenant_crud.create_tenant(db, tenant_data, conteudo_loja)
+        # A chamada foi simplificada para passar apenas o objeto tenant_data
+        tenant = tenant_crud.create_tenant(db, tenant_data)
         logger.info(
             f"Tenant {tenant_id} criado no banco de dados, iniciando vetorização."
         )

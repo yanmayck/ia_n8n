@@ -30,10 +30,7 @@ def get_tenant_by_instance_name(db: Session, instance_name: str):
 
 
 def create_tenant(
-    db: Session,
-    tenant: schemas.TenantCreate,
-    conteudo_loja: str,
-    evolution_instance_name: str,
+    db: Session, tenant: schemas.TenantCreate, evolution_instance_name: Optional[str] = None
 ):
     from .personality_crud import create_personality, get_personality_by_name
 
@@ -54,8 +51,8 @@ def create_tenant(
     db_tenant = models.Tenant(
         tenant_id=tenant.tenant_id,
         nome_loja=tenant.nome_loja,
-        config_ai=conteudo_loja,
-        evolution_instance_name=evolution_instance_name,  # Adicionado
+        config_ai=tenant.config_ai,
+        evolution_instance_name=evolution_instance_name,
         is_active=True,
         personality=db_personality,
         endereco=tenant.endereco,

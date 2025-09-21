@@ -5,31 +5,25 @@ from sqlalchemy.orm import Session
 
 # Testes para Tenant CRUD
 def test_create_tenant(db_session: Session):
-    personality_data = schemas.PersonalityCreate(
-        name="test_personality", prompt="test prompt"
-    )
     tenant_data = schemas.TenantCreate(
         tenant_id="test_tenant",
         nome_loja="Test Store",
-        ia_personality=personality_data.name,
-        ai_prompt_description=personality_data.prompt,
+        ia_personality="test_personality",
+        ai_prompt_description="test prompt",
         endereco="123 Test St",
         cep="12345-678",
         latitude=-23.550520,
         longitude=-46.633308,
+        config_ai="Informações da loja de teste.",
     )
-    conteudo_loja = "Informações da loja de teste."
 
     tenant = tenant_crud.create_tenant(
-        db_session,
-        tenant_data,
-        conteudo_loja,
-        evolution_instance_name="test_instance_name",
+        db_session, tenant_data, evolution_instance_name="test_instance_name"
     )
 
     assert tenant.tenant_id == "test_tenant"
     assert tenant.nome_loja == "Test Store"
-    assert tenant.config_ai == conteudo_loja
+    assert tenant.config_ai == "Informações da loja de teste."
     assert tenant.evolution_instance_name == "test_instance_name"
     assert tenant.personality is not None
     assert tenant.personality.name == "test_personality"
@@ -37,21 +31,19 @@ def test_create_tenant(db_session: Session):
 
 def test_get_tenant_by_instance_name(db_session: Session):
     # Crie um tenant para buscar pela instância
-    personality_data = schemas.PersonalityCreate(
-        name="instance_test_personality", prompt="instance prompt"
-    )
     tenant_data = schemas.TenantCreate(
         tenant_id="instance_tenant_id",
         nome_loja="Instance Test Store",
-        ia_personality=personality_data.name,
-        ai_prompt_description=personality_data.prompt,
+        ia_personality="instance_test_personality",
+        ai_prompt_description="instance prompt",
         endereco="789 Instance St",
         cep="54321-876",
         latitude=-20.0,
         longitude=-40.0,
+        config_ai="info",
     )
     tenant_crud.create_tenant(
-        db_session, tenant_data, "info", evolution_instance_name="my_whatsapp_instance"
+        db_session, tenant_data, evolution_instance_name="my_whatsapp_instance"
     )
 
     fetched_tenant = tenant_crud.get_tenant_by_instance_name(
@@ -63,21 +55,18 @@ def test_get_tenant_by_instance_name(db_session: Session):
 
 def test_get_tenant_by_id(db_session: Session):
     # Primeiro, crie um tenant para buscar
-    personality_data = schemas.PersonalityCreate(
-        name="get_test_personality", prompt="get prompt"
-    )
     tenant_data = schemas.TenantCreate(
         tenant_id="get_test_tenant",
         nome_loja="Get Test Store",
-        ia_personality=personality_data.name,
-        ai_prompt_description=personality_data.prompt,
+        ia_personality="get_test_personality",
+        ai_prompt_description="get prompt",
         endereco="456 Get St",
         cep="87654-321",
         latitude=-10.916449,
         longitude=-37.074795,
+        config_ai="Info para get.",
     )
-    conteudo_loja = "Info para get."
-    tenant_crud.create_tenant(db_session, tenant_data, conteudo_loja)
+    tenant_crud.create_tenant(db_session, tenant_data)
 
     fetched_tenant = tenant_crud.get_tenant_by_id(db_session, "get_test_tenant")
     assert fetched_tenant is not None
@@ -85,10 +74,8 @@ def test_get_tenant_by_id(db_session: Session):
 
 
 def test_get_all_tenants(db_session: Session):
-    # Conta os tenants existentes (pode haver tenants de outros testes, como o test_tenant fixture)
     initial_tenants = db_session.query(models.Tenant).count()
 
-    # Crie alguns tenants
     tenant_crud.create_tenant(
         db_session,
         schemas.TenantCreate(
@@ -100,8 +87,8 @@ def test_get_all_tenants(db_session: Session):
             cep="c1",
             latitude=1.0,
             longitude=1.0,
+            config_ai="config1",
         ),
-        "config1",
     )
     tenant_crud.create_tenant(
         db_session,
@@ -114,16 +101,14 @@ def test_get_all_tenants(db_session: Session):
             cep="c2",
             latitude=2.0,
             longitude=2.0,
+            config_ai="config2",
         ),
-        "config2",
     )
 
-    # Verifica se a contagem aumentou em 2
     assert db_session.query(models.Tenant).count() == initial_tenants + 2
 
 
 def test_update_tenant(db_session: Session):
-    # Crie um tenant para atualizar
     tenant_crud.create_tenant(
         db_session,
         schemas.TenantCreate(
@@ -135,8 +120,8 @@ def test_update_tenant(db_session: Session):
             cep="old_c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="old_config",
         ),
-        "old_config",
     )
 
     update_data = schemas.TenantUpdateSchema(
@@ -156,7 +141,6 @@ def test_update_tenant(db_session: Session):
 
 
 def test_delete_tenant(db_session: Session):
-    # Crie um tenant para deletar
     tenant_crud.create_tenant(
         db_session,
         schemas.TenantCreate(
@@ -168,8 +152,8 @@ def test_delete_tenant(db_session: Session):
             cep="del_c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="del_config",
         ),
-        "del_config",
     )
 
     result = tenant_crud.delete_tenant(db_session, "delete_tenant")
@@ -178,7 +162,6 @@ def test_delete_tenant(db_session: Session):
 
 
 def test_toggle_tenant_status(db_session: Session):
-    # Crie um tenant para alternar o status
     tenant_crud.create_tenant(
         db_session,
         schemas.TenantCreate(
@@ -190,8 +173,8 @@ def test_toggle_tenant_status(db_session: Session):
             cep="tog_c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="tog_config",
         ),
-        "tog_config",
     )
 
     toggled_tenant = tenant_crud.toggle_tenant_status(
@@ -232,8 +215,8 @@ def test_create_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="prod_config",
         ),
-        "prod_config",
     )
     product_data = schemas.ProductCreate(
         nome_produto="Pizza",
@@ -262,8 +245,8 @@ def test_get_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="get_prod_config",
         ),
-        "get_prod_config",
     )
     product_data = schemas.ProductCreate(nome_produto="Burger", preco_base=25.0)
     created_product = product_crud.create_product(
@@ -286,8 +269,8 @@ def test_get_products_by_tenant(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="multi_prod_config",
         ),
-        "multi_prod_config",
     )
     product_crud.create_product(
         db_session,
@@ -317,8 +300,8 @@ def test_update_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="upd_prod_config",
         ),
-        "upd_prod_config",
     )
     product_data = schemas.ProductCreate(nome_produto="Old Product", preco_base=10.0)
     created_product = product_crud.create_product(
@@ -346,8 +329,8 @@ def test_delete_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="del_prod_config",
         ),
-        "del_prod_config",
     )
     product_data = schemas.ProductCreate(
         nome_produto="Product to Delete", preco_base=5.0
@@ -372,8 +355,8 @@ def test_link_and_unlink_opcional_to_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="link_config",
         ),
-        "link_config",
     )
     product_data = schemas.ProductCreate(nome_produto="Linked Product", preco_base=10.0)
     opcional_data = schemas.OpcionalCreate(
@@ -412,8 +395,8 @@ def test_create_opcional(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="opc_config",
         ),
-        "opc_config",
     )
     opcional_data = schemas.OpcionalCreate(
         nome_opcional="Molho Extra", tipo_opcional="Adicional", preco_adicional=2.5
@@ -437,8 +420,8 @@ def test_get_opcional(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="get_opc_config",
         ),
-        "get_opc_config",
     )
     opcional_data = schemas.OpcionalCreate(
         nome_opcional="Cebola Crocante", preco_adicional=3.0, tipo_opcional="Adicional"
@@ -465,8 +448,8 @@ def test_get_opcionais_by_tenant(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="multi_opc_config",
         ),
-        "multi_opc_config",
     )
     opcional_crud.create_opcional(
         db_session,
@@ -500,8 +483,8 @@ def test_update_opcional(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="upd_opc_config",
         ),
-        "upd_opc_config",
     )
     opcional_data = schemas.OpcionalCreate(
         nome_opcional="Old Opcional", preco_adicional=1.0, tipo_opcional="Adicional"
@@ -533,8 +516,8 @@ def test_delete_opcional(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="del_opc_config",
         ),
-        "del_opc_config",
     )
     opcional_data = schemas.OpcionalCreate(
         nome_opcional="Opcional to Delete",
@@ -562,8 +545,8 @@ def test_create_promocao(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="promo_config",
         ),
-        "promo_config",
     )
     promocao_data = schemas.PromocaoCreate(
         nome_promocao="Desconto de Verão",
@@ -592,8 +575,8 @@ def test_get_promocao(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="get_promo_config",
         ),
-        "get_promo_config",
     )
     promocao_data = schemas.PromocaoCreate(
         nome_promocao="Frete Grátis",
@@ -624,8 +607,8 @@ def test_get_promocoes_by_tenant(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="multi_promo_config",
         ),
-        "multi_promo_config",
     )
     promocao_crud.create_promocao(
         db_session,
@@ -655,8 +638,8 @@ def test_update_promocao(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="upd_promo_config",
         ),
-        "upd_promo_config",
     )
     promocao_data = schemas.PromocaoCreate(nome_promocao="Old Promo", is_ativa=True)
     created_promocao = promocao_crud.create_promocao(
@@ -684,8 +667,8 @@ def test_delete_promocao(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="del_promo_config",
         ),
-        "del_promo_config",
     )
     promocao_data = schemas.PromocaoCreate(
         nome_promocao="Promo to Delete", is_ativa=True
@@ -711,8 +694,8 @@ def test_link_and_unlink_promocao_to_product(db_session: Session):
             cep="c",
             latitude=0.0,
             longitude=0.0,
+            config_ai="config",
         ),
-        "config",
     )
     product_data = schemas.ProductCreate(
         nome_produto="Product for Promo", preco_base=50.0

@@ -283,10 +283,51 @@ class OrderTakingOutput(BaseModel):
     address: Optional[str] = None
 
 
+# =======================================================================
+# Esquemas para a Resposta Estruturada da IA
+# =======================================================================
+class FreightDetails(BaseModel):
+    distance_km: float
+    origin_address: Optional[str] = None
+    origin_latitude: Optional[float] = None
+    origin_longitude: Optional[float] = None
+    destination_latitude: float
+    destination_longitude: float
+    cost: Optional[float] = None
+
+
+class FileSummary(BaseModel):
+    summary_text: str
+    file_type: str
+
+
+class AIResponse(BaseModel):
+    response_text: str
+    human_handoff: bool
+    send_menu: bool
+    freight_details: Optional[FreightDetails] = None
+    file_summary: Optional[FileSummary] = None
+
+
+class OrchestratorDecision(BaseModel):
+    agent_to_call: str
+    agent_input: Optional[str] = None
+
+
+class FinalResponseData(BaseModel):
+    text_response: str
+    human_handoff_needed: bool = False
+    send_menu_requested: bool = False
+    freight_details: Optional[FreightDetails] = None
+    file_summary: Optional[FileSummary] = None
+
+
 class OrderState(BaseModel):
     items: List[OrderItem] = Field(default_factory=list)
     address: Optional[str] = None
     status: str = "open"
+    payment_method: Optional[str] = None
+    freight_details: Optional["FreightDetails"] = None  # <-- CORREÇÃO: Forward Reference
     promocoes_oferecidas_ids: List[int] = Field(default_factory=list)
     last_offered_promotion_id: Optional[int] = None
 
@@ -360,48 +401,11 @@ class Order(OrderBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# =======================================================================
-# Esquemas para a Resposta Estruturada da IA
-# =======================================================================
-class FreightDetails(BaseModel):
-    distance_km: float
-    origin_address: Optional[str] = None
-    origin_latitude: Optional[float] = None
-    origin_longitude: Optional[float] = None
-    destination_latitude: float
-    destination_longitude: float
-    cost: Optional[float] = None
-
-
-class FileSummary(BaseModel):
-    summary_text: str
-    file_type: str
-
-
-class AIResponse(BaseModel):
-    response_text: str
-    human_handoff: bool
-    send_menu: bool
-    freight_details: Optional[FreightDetails] = None
-    file_summary: Optional[FileSummary] = None
-
-
-class OrchestratorDecision(BaseModel):
-    agent_to_call: str
-    agent_input: Optional[str] = None
-
-
-class FinalResponseData(BaseModel):
-    text_response: str
-    human_handoff_needed: bool = False
-    send_menu_requested: bool = False
-    freight_details: Optional[FreightDetails] = None
-    file_summary: Optional[FileSummary] = None
-
 
 # =======================================================================
 # Novos Esquemas para Análise de Intenção da IA
 # =======================================================================
+
 class ModificacaoItem(BaseModel):
     tipo: str = Field(
         description="O tipo de modificação, como 'REMOVER_INGREDIENTE' ou 'ADICIONAR_OPCIONAL'."

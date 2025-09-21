@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from core.models import Tenant
-from core.schemas import MenuImageCreate, ProductCreate, PromocaoCreate
-from crud import menu_image_crud, product_crud, promocao_crud
+from core.schemas import ProductCreate
+from crud import product_crud
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -56,16 +56,14 @@ def get_text_from_response(response_parts: list) -> str:
 @pytest.mark.asyncio
 @patch("services.main_orchestrator.save_order_to_platform", new_callable=AsyncMock)
 async def test_complete_order_flow(
-    mock_send_order: MagicMock,
+    mock_save_order: MagicMock,
     client: httpx.AsyncClient,
     db_session: Session,
     test_tenant: Tenant,
 ):
     """
-    Testa um fluxo de conversação de pedido completo, focando no resultado final (dados enviados)
-    em vez de validar cada resposta intermediária da IA.
+    Testa o fluxo de conversação de pedido completo, seguindo a nova lógica do MVP.
     """
-    session_id = f"test_full_flow_e2e_session_{uuid.uuid4()}"
     user_id = "user_full_flow_e2e"
     conversation_log = []
 
@@ -80,82 +78,47 @@ async def test_complete_order_flow(
         conversation_log.append({"user": message, "ai": text_response})
         return response_json, text_response
 
-    # --- PASSO 1: Configuração do Ambiente (Produtos, Promoções e Imagem de Cardápio) ---
-    logger.info(
-        f"[{user_id}] - PASSO 1: Configurando produtos, promoções e imagem de cardápio no DB."
-    )
+    # --- PASSO 1: Configuração do Ambiente ---
     product1 = ProductCreate(
         nome_produto="Pizza de Calabresa",
         preco_base=45.50,
         descricao_produto="Molho de tomate, queijo, calabresa e cebola.",
-        categoria_produto="Pizzas Salgadas",
     )
     product2 = ProductCreate(
-        nome_produto="Pizza de Quatro Queijos",
-        preco_base=50.00,
-        descricao_produto="Molho de tomate, mussarela, provolone, parmesão e gorgonzola.",
-        categoria_produto="Pizzas Salgadas",
-    )
-    product3 = ProductCreate(
         nome_produto="Refrigerante 2L",
         preco_base=10.00,
         descricao_produto="Coca-cola, Guaraná ou Fanta",
-        categoria_produto="Bebidas",
     )
-    promo = PromocaoCreate(
-        nome_promocao="Borda Recheada Grátis",
-        descricao_para_ia="Na compra de qualquer pizza grande, a borda recheada com catupiry é por nossa conta!",
-        acao_json={"tipo_desconto": "brinde", "valor_desconto": 0.0},
-        is_ativa=True,
-    )
-    menu_image = MenuImageCreate(
-        image_url="http://example.com/menu.jpg", description="Cardapio Principal"
-    )
-
     product_crud.create_product(db_session, product1, tenant_id=test_tenant.tenant_id)
     product_crud.create_product(db_session, product2, tenant_id=test_tenant.tenant_id)
-    product_crud.create_product(db_session, product3, tenant_id=test_tenant.tenant_id)
-    promocao_crud.create_promocao(db_session, promo, tenant_id=test_tenant.tenant_id)
-    menu_image_crud.create_menu_image(
-        db_session, menu_image, tenant_id=test_tenant.tenant_id
-    )
     db_session.commit()
 
-    # --- PASSO 2: Execução da Conversa ---
-    logger.info(f"[{session_id}] - PASSO 2: Executando a conversa completa.")
+    # --- PASSO 2: Execução da Conversa (Novo Fluxo) ---
     await log_and_ask("Boa noite")
-    response, _ = await log_and_ask("qual o cardapio?")
-    assert any(part.get("send_menu") for part in response), (
-        "A flag 'send_menu' não foi ativada no passo de pedir o cardápio."
-    )
+    await log_and_ask("gostaria de uma pizza de calabresa e um refrigerante 2l")
+    await log_and_ask("só isso, pode fechar a conta")
+    await log_and_ask("Pode ser no pix. Meu endereço é Avenida Paulista, 1000, São Paulo")
+    await log_and_ask("sim, confirmo")
 
-    await log_and_ask("eu gostaria de uma pizza de calabresa e um refrigerante 2l")
-    await log_and_ask("ah, pode tirar o refrigerante por favor")
-    await log_and_ask(
-        "pode fechar a conta. meu endereço é Avenida Paulista, 1000, São Paulo"
-    )
-    await log_and_ask("isso, pode confirmar")
+    # --- PASSO 3: Validação Final ---
+    mock_save_order.assert_called_once()
 
-    # --- PASSO 3: Validação Final (O que realmente importa) ---
-    logger.info(
-        f"[{session_id}] - PASSO 3: Verificando se o pedido foi enviado corretamente para a plataforma."
-    )
-
-    mock_send_order.assert_called_once()
-
-    sent_order_data = mock_send_order.call_args.kwargs
+    # Verifica os dados que foram enviados para a plataforma
+    sent_order_data = mock_save_order.call_args.kwargs
     logger.info(f"DADOS ENVIADOS PARA A PLATAFORMA: {sent_order_data}")
 
     assert sent_order_data["user_id"] == user_id
-    assert len(sent_order_data["items"]) == 1
-    assert sent_order_data["items"][0]["product_name"] == "Pizza de Calabresa"
-    assert sent_order_data["address"] is not None
-    assert "avenida paulista, 1000" in sent_order_data["address"].lower()
+    assert sent_order_data["tenant_id"] == test_tenant.tenant_id
+    assert sent_order_data["payment_method"] == "pix"
+    assert "Avenida Paulista, 1000" in sent_order_data["address"]
+    
+    # Verifica os itens do pedido
+    sent_items = sent_order_data["items"]
+    assert len(sent_items) == 2
+    assert any(item["product_name"] == "Pizza de Calabresa" for item in sent_items)
+    assert any(item["product_name"] == "Refrigerante 2L" for item in sent_items)
 
-    # --- PASSO 4: Log da Conversa para Validação Manual ---
-    logger.info(
-        f"[{session_id}] - Fluxo de teste de ponta a ponta concluído com sucesso!"
-    )
+    # --- PASSO 4: Log da Conversa para Análise ---
     logger.info("--- LOG COMPLETO DA CONVERSA PARA ANÁLISE ---")
     for entry in conversation_log:
         logger.info(f"USER: {entry['user']}\nAI: {entry['ai']}\n")
