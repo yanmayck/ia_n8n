@@ -23,8 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -r
 # Limpa o cache do pip e instala as dependências Python a partir do arquivo de requisitos
 RUN pip cache purge && pip install --no-cache-dir -r requirements.txt
 
-# Força a reinstalação da agno para garantir que a versão correta seja usada
-RUN pip install --no-cache-dir --force-reinstall agno
+
 
 # Copia o restante do código da sua aplicação para o diretório de trabalho
 # O '.' no final significa o diretório atual do host.

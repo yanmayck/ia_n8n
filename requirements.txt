@@ -5,7 +5,7 @@ alembic
 python-dotenv
 supabase
 pgvector
-agno
+agno==1.8.4
 httpx
 psycopg2-binary
 python-jose[cryptography]

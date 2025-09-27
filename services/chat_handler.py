@@ -19,6 +19,28 @@ memory_db = PostgresMemoryDb(table_name="user_memories", db_url=DATABASE_URL)
 
 
 async def execute_ai_call_with_failover(tenant_id: str, db: Session, orchestrator_call):
+    """
+    Executa a chamada para a IA (orquestrador) com um sistema de failover de chaves de API.
+
+    Esta função implementa uma lógica de resiliência crucial:
+    1.  Tenta usar as chaves de API específicas do tenant, ordenadas por prioridade.
+    2.  Se uma chave falhar por limite de uso (`ResourceExhausted`), ela tenta a próxima.
+    3.  Se todas as chaves do tenant falharem, ela usa uma chave de API global (do .env) como fallback.
+    4.  Se todas as tentativas falharem, levanta uma exceção.
+
+    Args:
+        tenant_id (str): O ID do tenant para o qual a chamada está sendo feita.
+        db (Session): A sessão do banco de dados para buscar as chaves de API.
+        orchestrator_call (Callable): Uma função `async` que recebe a `api_key` como argumento
+                                      e executa a lógica principal da IA.
+
+    Returns:
+        Any: O resultado da chamada bem-sucedida de `orchestrator_call`.
+
+    Raises:
+        HTTPException: Se todas as chaves de API disponíveis falharem.
+        ValueError: Se nenhuma chave de API (nem do tenant, nem global) estiver configurada.
+    """
     # 1. Tenta buscar chaves específicas do tenant no banco de dados
     logger.info(
         f"CHAT_HANDLER: Buscando chaves de API para o tenant {tenant_id}."
@@ -100,6 +122,34 @@ async def handle_message(
     client_latitude: float = None,
     client_longitude: float = None,
 ):
+    """
+    Ponto de entrada principal para o processamento de mensagens pela IA.
+
+    Esta função é chamada pela rota da API (`/ai`) e orquestra todo o processo:
+    1.  Verifica se a mensagem do WhatsApp já foi processada para evitar duplicatas.
+    2.  Busca os dados do tenant (loja) no banco de dados.
+    3.  Define a chamada para o `OrchestratorAgent`, que contém a lógica principal.
+    4.  Invoca `execute_ai_call_with_failover` para executar a chamada de forma resiliente.
+    5.  Registra a interação (mensagem do usuário e resposta da IA) no banco de dados.
+
+    Args:
+        user_id (str): O identificador do usuário (geralmente o número de telefone).
+        whatsapp_message_id (str): O ID único da mensagem do WhatsApp para evitar duplicatas.
+        message (str): O texto da mensagem do usuário.
+        tenant_id (str): O ID do tenant (loja) que está recebendo a mensagem.
+        personality_prompt (str): O prompt de personalidade da IA para guiar o tom da resposta.
+        db (Session): A sessão do banco de dados.
+        file_content (bytes, optional): Conteúdo de um arquivo (imagem, áudio) em bytes.
+        mimetype (str, optional): O tipo MIME do arquivo enviado.
+        client_latitude (float, optional): A latitude do cliente, se enviada.
+        client_longitude (float, optional): A longitude do cliente, se enviada.
+
+    Returns:
+        AIResponse: Um objeto Pydantic contendo a resposta estruturada da IA.
+
+    Raises:
+        HTTPException: Se ocorrer um erro durante o processamento.
+    """
     logger.info(
         f"HANDLE_MESSAGE_TRACE: Iniciando handle_message para user_id: {user_id}, whatsapp_message_id: {whatsapp_message_id}"
     )
