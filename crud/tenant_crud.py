@@ -30,7 +30,9 @@ def get_tenant_by_instance_name(db: Session, instance_name: str):
 
 
 def create_tenant(
-    db: Session, tenant: schemas.TenantCreate, evolution_instance_name: Optional[str] = None
+    db: Session,
+    tenant: schemas.TenantCreate,
+    evolution_instance_name: Optional[str] = None,
 ):
     from .personality_crud import create_personality, get_personality_by_name
 

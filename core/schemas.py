@@ -327,7 +327,9 @@ class OrderState(BaseModel):
     address: Optional[str] = None
     status: str = "open"
     payment_method: Optional[str] = None
-    freight_details: Optional["FreightDetails"] = None  # <-- CORREÇÃO: Forward Reference
+    freight_details: Optional["FreightDetails"] = (
+        None  # <-- CORREÇÃO: Forward Reference
+    )
     promocoes_oferecidas_ids: List[int] = Field(default_factory=list)
     last_offered_promotion_id: Optional[int] = None
 
@@ -401,10 +403,10 @@ class Order(OrderBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-
 # =======================================================================
 # Novos Esquemas para Análise de Intenção da IA
 # =======================================================================
+
 
 class ModificacaoItem(BaseModel):
     tipo: str = Field(

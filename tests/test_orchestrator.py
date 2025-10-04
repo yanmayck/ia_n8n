@@ -13,7 +13,9 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "fake_api_key_for_testing")
-integration_test_reason = "GEMINI_API_KEY ou GOOGLE_MAPS_API_KEY não configurada no ambiente"
+integration_test_reason = (
+    "GEMINI_API_KEY ou GOOGLE_MAPS_API_KEY não configurada no ambiente"
+)
 
 
 # --- Testes de Integração (Chamadas Reais) ---
@@ -25,7 +27,9 @@ integration_test_reason = "GEMINI_API_KEY ou GOOGLE_MAPS_API_KEY não configurad
     reason=integration_test_reason,
 )
 @pytest.mark.asyncio
-async def test_freight_calculation_with_text_address(db_session: Session, test_tenant: Tenant):
+async def test_freight_calculation_with_text_address(
+    db_session: Session, test_tenant: Tenant
+):
     """Testa se o orquestrador consegue lidar com um endereço em texto, usando a API real."""
     orchestrator = OrchestratorAgent(
         db=db_session,
@@ -55,7 +59,9 @@ async def test_freight_calculation_with_text_address(db_session: Session, test_t
 @pytest.mark.integration
 @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY"), reason=integration_test_reason)
 @pytest.mark.asyncio
-async def test_general_question_makes_real_api_call(db_session: Session, test_tenant: Tenant):
+async def test_general_question_makes_real_api_call(
+    db_session: Session, test_tenant: Tenant
+):
     """Testa se o RAG busca informações da loja corretamente."""
     orchestrator = OrchestratorAgent(
         db=db_session,

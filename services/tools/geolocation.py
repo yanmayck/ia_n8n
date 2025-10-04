@@ -36,7 +36,7 @@ async def geocode_address(address: str, tenant_id: str, db: Session) -> str:
     try:
         lat, lng = float(tenant.latitude), float(tenant.longitude)
         # Cria um retângulo de ~50km x 50km ao redor da loja
-        bounds = f"{lat-0.25},{lng-0.25}|{lat+0.25},{lng+0.25}"
+        bounds = f"{lat - 0.25},{lng - 0.25}|{lat + 0.25},{lng + 0.25}"
         params["bounds"] = bounds
         logger.info(f"Geocoding com viés de localização: {bounds}")
     except (ValueError, TypeError):

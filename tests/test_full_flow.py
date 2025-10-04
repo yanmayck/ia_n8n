@@ -97,7 +97,9 @@ async def test_complete_order_flow(
     await log_and_ask("Boa noite")
     await log_and_ask("gostaria de uma pizza de calabresa e um refrigerante 2l")
     await log_and_ask("só isso, pode fechar a conta")
-    await log_and_ask("Pode ser no pix. Meu endereço é Avenida Paulista, 1000, São Paulo")
+    await log_and_ask(
+        "Pode ser no pix. Meu endereço é Avenida Paulista, 1000, São Paulo"
+    )
     await log_and_ask("sim, confirmo")
 
     # --- PASSO 3: Validação Final ---
@@ -111,7 +113,7 @@ async def test_complete_order_flow(
     assert sent_order_data["tenant_id"] == test_tenant.tenant_id
     assert sent_order_data["payment_method"] == "pix"
     assert "Avenida Paulista, 1000" in sent_order_data["address"]
-    
+
     # Verifica os itens do pedido
     sent_items = sent_order_data["items"]
     assert len(sent_items) == 2

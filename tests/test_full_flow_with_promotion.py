@@ -120,12 +120,14 @@ async def test_complete_order_flow_with_promotion_acceptance(
     assert sent_order_data["user_id"] == user_id
     assert sent_order_data["payment_method"] == "cartão"
     assert "Rua das Flores, 123" in sent_order_data["address"]
-    
+
     sent_items = sent_order_data["items"]
     assert len(sent_items) == 2  # Deve conter a Pizza e o Brinde
     assert any(item["product_name"] == "Pizza de Calabresa" for item in sent_items)
-    assert any(item["product_name"] == "Borda Recheada Grátis" and item["unit_price"] == 0.0 for item in sent_items), \
-        "O item da promoção (brinde) não foi encontrado ou seu preço não é zero."
+    assert any(
+        item["product_name"] == "Borda Recheada Grátis" and item["unit_price"] == 0.0
+        for item in sent_items
+    ), "O item da promoção (brinde) não foi encontrado ou seu preço não é zero."
 
     # --- PASSO 4: Log da Conversa ---
     logger.info("--- LOG COMPLETO DA CONVERSA PARA ANÁLISE ---")
