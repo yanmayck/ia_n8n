@@ -178,6 +178,15 @@ class TenantConfigRequest(BaseModel):
     instancia: str
 
 
+class TenantConfigResponse(BaseModel):
+    tenant_id: str = Field(..., alias="tenantId")
+    is_active: bool = Field(..., alias="isActive")
+    evolution_api_key: Optional[str] = Field(None, alias="evolutionApiKey")
+    url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
 class TenantInstancia(BaseModel):
     instancia: str
     url: str

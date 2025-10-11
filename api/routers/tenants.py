@@ -21,10 +21,9 @@ from starlette.concurrency import run_in_threadpool
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-
 @router.post(
-    "/tenants/config",
-    response_model=schemas.Tenant,
+    "/tenants/config",     
+    response_model=schemas.TenantConfigResponse,
     tags=["Tenants"],
     dependencies=[Depends(get_current_user)],
 )

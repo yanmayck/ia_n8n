@@ -84,7 +84,6 @@ async def sync_webhook_receiver(
             tenant_crud.create_tenant(
                 db,
                 tenant_data,
-                tenant_data.config_ai,
                 tenant_data.evolution_instance_name,
             )
 
